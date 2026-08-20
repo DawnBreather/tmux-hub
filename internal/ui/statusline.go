@@ -200,7 +200,7 @@ func (m model) publishAliases() tea.Cmd {
 		if c := writeSessionOptions(m.run, h.Target(), aliasPublications(rows, m.aliases)); c != nil {
 			cmds = append(cmds, c)
 		}
-		if c := renameWindows(m.run, h.Target(), windowRenames(rows, m.aliases)); c != nil {
+		if c := renameWindows(m.run, h.Target(), windowRenames(rows, m.aliases, m.askedWindowName)); c != nil {
 			cmds = append(cmds, c)
 		}
 	}
@@ -223,7 +223,11 @@ func (m model) publishAliases() tea.Cmd {
 // hub did not make is one the operator owns, and renaming it would be the hub writing over their
 // work. There is no window option to consult for the same reason the attach window has none — an
 // option set after a create loses a race against the payload.
-func windowRenames(rows []registry.Pane, aliases project.Aliases) []tmux.WindowRename {
+// asked is the hub's memory of what it has already ASKED for, per window id — see
+// model.askedWindowName. A nil map disables the concession, which is what the pure frame tests
+// want: they assert the rename this function WOULD make.
+func windowRenames(rows []registry.Pane, aliases project.Aliases,
+	asked map[string]string) []tmux.WindowRename {
 	var out []tmux.WindowRename
 	seen := map[string]bool{}
 	for _, p := range rows {
@@ -237,6 +241,11 @@ func windowRenames(rows []registry.Pane, aliases project.Aliases) []tmux.WindowR
 		if want == "" || want == p.Window {
 			continue
 		}
+		// ALREADY ASKED FOR EXACTLY THIS NAME, and the window is not carrying it: another program
+		// writes that name too, and asking again is the loop the operator sees shimmer. Conceded.
+		if asked != nil && asked[p.WindowID] == want {
+			continue
+		}
 		if err := tmux.ValidOptionValue(want); err != nil {
 			// The same refusal the alias publisher makes, for the same reason: every rename on a
 			// host travels in ONE invocation, so a name the seam refuses would take the whole batch
@@ -244,6 +253,9 @@ func windowRenames(rows []registry.Pane, aliases project.Aliases) []tmux.WindowR
 			continue
 		}
 		seen[p.WindowID] = true
+		if asked != nil {
+			asked[p.WindowID] = want
+		}
 		// AutoOff because this window may predate the door passing `-n`, in which case tmux is still
 		// renaming it and the rename alone would not survive the next command the pane runs.
 		out = append(out, tmux.WindowRename{WindowID: p.WindowID, Name: want, AutoOff: true})

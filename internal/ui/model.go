@@ -164,6 +164,25 @@ type model struct {
 	atSelection map[SelectionKey]paneSnapshot
 	lastOutcome map[SelectionKey]broadcast.Outcome
 
+	// askedWindowName is the name the hub last ASKED a window to take, per window id, and it exists
+	// because the hub is not the only program that writes a window name.
+	//
+	// Reported as a status line that "shimmers" on some sessions. Measured on the operator's own
+	// server: three windows alternating between the operator's alias and the raw Claude session name
+	// (`frontend-troubleshooting` ↔ `20260810--troubleshooting`) several times a second, with
+	// `automatic-rename` OFF — so tmux was not doing it. Claude Code names the window after its own
+	// session, the hub's differences-only rule then saw a name that had drifted and wrote the alias
+	// back, and each side kept undoing the other at poll rate.
+	//
+	// A differences-only rule is not enough when there are two writers: it is the very thing that
+	// makes the loop tight. So the hub asks ONCE for a given name and, if that name does not stick,
+	// concedes the window — the alias is still what the dashboard shows, which is the surface the
+	// operator asked for. A new alias is a new name and therefore gets one fresh attempt.
+	//
+	// It is a map so a value receiver can record into it, and it is touched only from Update
+	// (`publishAliases` runs there and hands plain values to its commands), so it needs no lock.
+	askedWindowName map[string]string
+
 	mode uiMode
 	// underlay is the SCREEN an overlay was raised over. Written only by `raise`, read only by
 	// `dismiss`, zero-valued at the dashboard — which is where a hub with no overlay open is.
@@ -1638,22 +1657,23 @@ func build(ctx context.Context, r tmux.Exec, extra []hub.Host, local bool, log *
 		poller: p, reg: reg, ctx: ctx,
 		hosts: hosts,
 		width: 80, height: 24, log: log,
-		run:          r,
-		sender:       broadcast.NewSender(r, st, inst),
-		stamper:      st,
-		keeper:       broadcast.NewKeeper(st),
-		hist:         hist,
-		hidden:       hidden,
-		walk:         walkerFor,
-		atSelection:  map[SelectionKey]paneSnapshot{},
-		lastOutcome:  map[SelectionKey]broadcast.Outcome{},
-		identBusy:    map[string]bool{},
-		identErr:     map[string]string{},
-		identTimeout: IdentTimeout,
-		selfSession:  selfSession,
-		selfEpoch:    selfEpoch,
-		self:         selfCommand(),
-		home:         operatorHome(),
+		run:             r,
+		sender:          broadcast.NewSender(r, st, inst),
+		stamper:         st,
+		keeper:          broadcast.NewKeeper(st),
+		hist:            hist,
+		hidden:          hidden,
+		walk:            walkerFor,
+		atSelection:     map[SelectionKey]paneSnapshot{},
+		lastOutcome:     map[SelectionKey]broadcast.Outcome{},
+		askedWindowName: map[string]string{},
+		identBusy:       map[string]bool{},
+		identErr:        map[string]string{},
+		identTimeout:    IdentTimeout,
+		selfSession:     selfSession,
+		selfEpoch:       selfEpoch,
+		self:            selfCommand(),
+		home:            operatorHome(),
 	}
 	// Surface the warning when the hidden set could not be used, so the user knows
 	// their marks are not being applied.

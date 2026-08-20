@@ -300,7 +300,7 @@ func TestTheDoorWindowIsRenamedToTheNameTheDashboardShows(t *testing.T) {
 	var al project.Aliases
 	rows := []registry.Pane{door, theirs}
 
-	ws := windowRenames(rows, al)
+	ws := windowRenames(rows, al, nil)
 	if len(ws) != 1 {
 		t.Fatalf("renames = %+v, want exactly one (the door's window)", ws)
 	}
@@ -318,7 +318,7 @@ func TestTheDoorWindowIsRenamedToTheNameTheDashboardShows(t *testing.T) {
 	// An ALIAS is what the dashboard shows once the operator has typed one, so it is what the window
 	// gets. This is the case that has to keep working after the door has already opened.
 	al.Set(project.AliasKeyOf(door), "прод-выкатка")
-	ws = windowRenames(rows, al)
+	ws = windowRenames(rows, al, nil)
 	if len(ws) != 1 || ws[0].Name != "прод-выкатка" {
 		t.Errorf("renames = %+v, want the alias", ws)
 	}
@@ -327,7 +327,7 @@ func TestTheDoorWindowIsRenamedToTheNameTheDashboardShows(t *testing.T) {
 	// names agree costs no tmux commands at all.
 	inStep := door
 	inStep.Window = "прод-выкатка"
-	if ws := windowRenames([]registry.Pane{inStep, theirs}, al); len(ws) != 0 {
+	if ws := windowRenames([]registry.Pane{inStep, theirs}, al, nil); len(ws) != 0 {
 		t.Errorf("renames = %+v on a fleet already in step, want none", ws)
 	}
 }
@@ -351,7 +351,7 @@ func TestAnUnrenamableNameDoesNotCostTheOtherWindowsTheirs(t *testing.T) {
 	// is not the hazard here — the sanitiser turns `50% done` into `50- done`, which tmux takes.
 	al.Set(project.AliasKeyOf(bad), "-wip")
 
-	ws := windowRenames([]registry.Pane{good, bad}, al)
+	ws := windowRenames([]registry.Pane{good, bad}, al, nil)
 	if len(ws) != 2 {
 		t.Fatalf("renames = %+v, want both windows named", ws)
 	}
