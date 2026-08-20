@@ -20,9 +20,18 @@ that stopped being the agent you selected is refused rather than written to
 
 ## Install
 
-macOS, with Homebrew:
+macOS, with Homebrew. **The name has to be qualified** — a bare `brew install tmux-hub` searches
+homebrew-core, which does not have this, and answers `No available formula with the name "tmux-hub"`:
 
     brew install DawnBreather/tap/tmux-hub
+
+That form needs nothing else: asking for a cask by its full tap path is taken as trusting it. If you
+would rather type the short name, tap and trust once — a cask from a third-party tap is refused
+otherwise — and then it resolves unqualified:
+
+    brew tap DawnBreather/tap
+    brew trust dawnbreather/tap
+    brew install tmux-hub
 
 A release binary. Every release ships `linux_amd64`, `linux_arm64`, `macos_arm64` and
 `macos_amd64`, with a `checksums.txt` beside them — pick yours from the
