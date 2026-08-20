@@ -41,6 +41,16 @@ A release binary. Every release ships `linux_amd64`, `linux_arm64`, `macos_arm64
     curl -sSfL "https://github.com/DawnBreather/tmux-hub/releases/download/v$VER/tmux-hub_${VER}_linux_amd64.tar.gz" \
       | tar -xz tmux-hub && ./tmux-hub --version
 
+On macOS, substitute `macos_arm64` or `macos_amd64`. These binaries are not notarised, so **if you
+take the archive from the releases page in a browser**, macOS attaches a quarantine attribute and the
+first run dies with "cannot be opened because the developer cannot be verified" — which reads as a
+broken build rather than as Gatekeeper. Clear it once:
+
+    xattr -d com.apple.quarantine ./tmux-hub
+
+Downloading with `curl` does not set that attribute, and the Homebrew cask clears it for you in a
+`postflight`, so this applies only to the browser route.
+
 With Go:
 
     go install github.com/DawnBreather/tmux-hub/cmd/tmux-hub@latest
