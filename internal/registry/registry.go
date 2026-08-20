@@ -296,10 +296,22 @@ func (p *Pane) stateAt(now time.Time) state.State {
 	}
 	// "Have we heard from the CLI about this pane" is a time question: AgentSeenAt
 	// is set exactly when the CLI reports a session, and remains zero otherwise.
-	if !p.AgentSeenAt.IsZero() && now.Sub(p.AgentSeenAt) < agentStateFreshness {
+	if p.agentFactFreshAt(now) {
 		return p.AgentState
 	}
 	return p.ClassifiedState
+}
+
+// AgentFactFresh says whether the listing's word for this row is still authoritative.
+//
+// It is exported because the RENDERER needs the same question and must not restate it: the freshness
+// window is one rule, and a second copy of it would drift from this one the first time it moves. Like
+// `State`, it reads the clock — a caller that must be reproducible fixes the instant with the
+// unexported form instead.
+func (p *Pane) AgentFactFresh() bool { return p.agentFactFreshAt(time.Now()) }
+
+func (p *Pane) agentFactFreshAt(now time.Time) bool {
+	return !p.AgentSeenAt.IsZero() && now.Sub(p.AgentSeenAt) < agentStateFreshness
 }
 
 type Registry struct {
@@ -375,8 +387,15 @@ func (r *Registry) UpdateAgents(host string, ss []agents.Session, now time.Time)
 	// purpose (a vanished pane must not make its session disappear), but folding a live listing
 	// row into it hands the corpse a fresh fact: the dead pane then reads `works` for the whole
 	// freshness window while the session — which is alive, and is the row with a door — never
-	// appears at all. A stale host is the same case one level up: its panes are last-known, not
-	// current.
+	// appears at all.
+	//
+	// A STALE HOST IS NOT THAT CASE, and treating it as one put the same session on screen twice.
+	// `MarkHostStale` marks a host's pane rows and deliberately spares its agent rows, so a pane
+	// skipped here leaves the listing row with nowhere to fold: the operator gets one `stale` row
+	// from the pane producer and one live row from the listing producer, for one session — and as
+	// the host flaps the pair appears and merges, which is what "the status is blinking" was. The
+	// difference that matters is that a stale pane is LAST-KNOWN rather than gone: it is still that
+	// session, its row is still drawn, and there is nothing for a second row to add.
 	bySession := make(map[string]*Pane, len(r.panes))
 	// byAttach is the same join recovered from the SERVER instead of from memory: a pane the door
 	// created is running `claude attach <short id>`, and `#{pane_start_command}` still says so after
@@ -388,7 +407,7 @@ func (r *Registry) UpdateAgents(host string, ss []agents.Session, now time.Time)
 	// the run that pressed `a`; this covers every run after it.
 	byAttach := make(map[string]*Pane, len(r.panes))
 	for _, p := range r.panes {
-		if p.Kind != KindPane || p.ClassifiedState == state.Gone || p.Stale {
+		if p.Kind != KindPane || p.ClassifiedState == state.Gone {
 			continue
 		}
 		if p.ClaudeSession != "" {

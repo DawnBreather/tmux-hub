@@ -1490,8 +1490,16 @@ func windowStart(cursor, n, capacity int) int {
 // stateWord is the state, or "stale" when the host stopped answering. A pane
 // whose host is gone must not keep reading `works` — observed when a killed
 // tunnel left a row looking live indefinitely.
+//
+// UNLESS the listing still has a fresh word for that row, and then `stale` would be the WORSE of two
+// available facts. `Stale` is set by the tmux poll failing, and the listing is a different producer
+// over a different path: measured on the fleet, a host whose tmux socket had stopped answering was
+// still reporting `working` with a pid for that very session. Printing `stale` there hides the one
+// thing the operator wanted — that the session is running — and the reason the row used to be the
+// only place to say it is that there was nothing else to say. There is now: the host line names the
+// host that is down and why, and the tile header carries the age.
 func stateWord(p registry.Pane) string {
-	if p.Stale {
+	if p.Stale && !p.AgentFactFresh() {
 		return "stale"
 	}
 	if p.Dead {

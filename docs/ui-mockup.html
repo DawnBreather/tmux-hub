@@ -824,7 +824,35 @@ local up · nuc up</pre></figure><figure class="shot"><figcaption>
    ✱ quiet  claude   nuc/deploy %4
    ▸ idle   tail     local/ops
    · works  claude   local/api %1
-local up · nuc up</pre></figure></section><section id="s7"><h2>8. Первая отрисовка и статусы хостов</h2><p class="intro">§16 обещает работоспособный дашборд до любой сетевой работы: локальный сокет отвечает за 2 мс, десять ssh-хостов конкурентно — 7.65 с. Ни одного экрана на это обещание не было, как и на три статуса из пяти.</p><figure class="shot"><figcaption>
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">7. Хост не отвечает, а листинг отвечает</div>
+<div class="meta"><b>120×24</b> · tmux у nuc замолчал, claude agents по-прежнему называет одну сессию</div>
+<div class="look">одна ли строка у сессии, и говорит ли она то, что известно лучше всего</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>works</code>, <code>stale</code></div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+   · works  %2   make
+NUC DEPLOY
+   · works  %4   claude
+   · stale  %5   claude
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc down (dial /run/user/1000/nuc.sock: connect: connection refused)</pre></figure></section><section id="s7"><h2>8. Первая отрисовка и статусы хостов</h2><p class="intro">§16 обещает работоспособный дашборд до любой сетевой работы: локальный сокет отвечает за 2 мс, десять ssh-хостов конкурентно — 7.65 с. Ни одного экрана на это обещание не было, как и на три статуса из пяти.</p><figure class="shot"><figcaption>
 <div class="t">1. Первая отрисовка: локальное уже есть, nuc ещё едет</div>
 <div class="meta"><b>120×24</b> · хаб запущен секунду назад; локальный сокет ответил за 2 мс, ssh-проба ещё идёт</div>
 <div class="look">можно ли работать ПРЯМО СЕЙЧАС, не дожидаясь сети; видно ли, что nuc не упал, а именно подключается — и не выглядит ли это как поломка</div>
@@ -2235,7 +2263,7 @@ enter: create · esc: cancel · ctrl+u: clear · tab/shift+tab: move · left/rig
 │                                                                      │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
-search: frontend▏  ·  2 of 7 · enter: keep · esc: cancel · local up · nuc up</pre></figure></section></main><footer>16 сценариев, 80 экранов.
+search: frontend▏  ·  2 of 7 · enter: keep · esc: cancel · local up · nuc up</pre></figure></section></main><footer>16 сценариев, 81 экранов.
 Пересобрать: <code>go test -tags mockup -run TestGenerateMockup ./internal/ui/</code>.
 Экраны ПРЕДЛОЖЕННОЙ функции живут отдельно и помечены покадрово:
 <a href="ui-flows-possession.html" style="color:#7aa2f7">§20 вселение — потоки</a>.

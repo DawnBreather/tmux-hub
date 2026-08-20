@@ -1327,9 +1327,25 @@ what a session-level action would hit, because there are no session-level action
   screen — an infinite mirror, observed live, plus a full-screen capture per tick spent on itself.
   A host whose only pane is the hub reads `up-empty`, not `down`.
 - **A host that stops answering keeps its panes**, each marked `stale` with its last screen — it
-  must not make sessions vanish, and it must not leave them looking live either (observed: a killed
-  tunnel left a row reading `works`). The age goes in the tile header, not the row, because
-  `(last seen …)` truncates to `(las` in a 28-column inbox.
+  must not make sessions vanish, and it must not leave them looking live on the strength of a
+  CAPTURE nobody has refreshed either (observed: a killed tunnel left a row reading `works` from
+  exactly that). The age goes in the tile header, not the row, because `(last seen …)` truncates
+  to `(las` in a 28-column inbox.
+  **Two consequences of there being a SECOND producer, both of which a reported defect had to
+  teach.** First, a stale pane is still a join target for the listing. `MarkHostStale` marks a
+  host's pane rows and deliberately spares its agent rows — an agent row's liveness has nothing to
+  do with the tmux tunnel — so skipping a stale pane left the listing row with nowhere to fold and
+  put one session on screen twice: a `stale` row from the pane producer beside a live row from the
+  listing, the pair appearing and merging as the host flapped. The operator reported that as a
+  duplicate whose status blinked, and it was one session drawn once by each producer. Second,
+  `stale` yields to a FRESH listing word on the row, because that word comes from the producer that
+  is still answering: measured on the fleet, a host whose tmux socket had gone quiet was reporting
+  `working` with a pid for that very session. A row with a fresh fact therefore says what the
+  session is doing, a row without one still says its host is gone, and the host line names the host
+  and the reason in both cases. A RETIRED pane (`state.Gone`) stays excluded from the join, which is
+  the case the exclusion was for: folding a live fact into a corpse would have it read `works` for
+  the whole freshness window while the session that is genuinely alive — the one with a door on it —
+  never got a row at all.
 - **Hosts are polled concurrently**: a remote tick is ~1.4 s against a local ~5 ms, so a serial
   loop made the dashboard update at the speed of the slowest host. The registry is guarded, and so
   is the poller's host list — each tick snapshots it under `Poller.mu`, works on its own copy, and
