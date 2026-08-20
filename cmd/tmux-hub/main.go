@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -43,9 +44,31 @@ import (
 const HistoryMaxBytes = 4 << 20
 
 // version is stamped at link time by the release build (`-ldflags "-X main.version=v1.2.3"`).
-// It stays `dev` for a `go build`, which is the honest answer for a binary built from a working
-// tree: a version string that claimed a tag would make a bug report point at the wrong source.
+// Unstamped it is `dev`, and `versionString` is what a reader should call.
 var version = "dev"
+
+// versionString answers for all three install routes, which is more than the ldflag can do.
+//
+// `go install …@v0.1.0` applies no ldflags at all, so a RELEASED version installed that way reported
+// `dev` — the one answer nobody can act on, because it names no source. The toolchain already
+// records the module version in the binary's build info, so the fallback is a read rather than a
+// guess. Measured on this program, all three routes:
+//
+//	go build (working tree at a tag, modified)  →  v0.1.0+dirty
+//	go build -ldflags -X main.version=v9.9.9    →  v9.9.9
+//	go install …@latest                         →  the tag, or a pseudo-version
+//
+// `dev` therefore survives only where build info has nothing either — a build with no VCS
+// information at all, which reports `(devel)`.
+func versionString() string {
+	if version != "dev" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return version
+}
 
 const (
 	// TmuxTimeout is the per-call deadline for tmux work, local or over a master.
@@ -208,7 +231,7 @@ func main() {
 	// reporting a defect needs to be able to say WHICH binary, and the answer must not depend on
 	// there being a tmux server to reach.
 	if *showVersion {
-		fmt.Println("tmux-hub", version)
+		fmt.Println("tmux-hub", versionString())
 		return
 	}
 
