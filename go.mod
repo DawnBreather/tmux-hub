@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
-	golang.org/x/sys v0.36.0
+	golang.org/x/sys v0.47.0
 )
 
 require (
