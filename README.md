@@ -28,7 +28,7 @@ A release binary. Every release ships `linux_amd64`, `linux_arm64`, `macos_arm64
 `macos_amd64`, with a `checksums.txt` beside them — pick yours from the
 [latest release](https://github.com/DawnBreather/tmux-hub/releases/latest), or:
 
-    VER=0.1.0   # a released version; the tag is v$VER
+    VER=0.1.1   # a released version; the tag is v$VER
     curl -sSfL "https://github.com/DawnBreather/tmux-hub/releases/download/v$VER/tmux-hub_${VER}_linux_amd64.tar.gz" \
       | tar -xz tmux-hub && ./tmux-hub --version
 
