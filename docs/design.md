@@ -101,6 +101,7 @@ so "read-only" is not a safety property here.
 | **the whole remote path, measured end to end on a live host** (`nuc`, tmux 3.2a, over ssh): tunnel ready in **2.22 s** waiting on the fact; `SO_PEERCRED` on the dial returned **exactly the ssh pid the hub spawned**; the 9-field delta over the forward **501 ms**; the identity probe returned `nuc-dev\|3.2a\|…\|/tmp/tmux-1000/default`, so both corroborating fields differ from local | §5's transport and its identity mechanism are verified, not inferred |
 | **attach cannot go over the forwarded socket, even from a real pty** — measured, `tmux -S <forwarded> attach` fails `open terminal failed: not a terminal`, while `ssh -S <ctl> -t host tmux attach` created a real client on the remote server | a remote attach MUST use the master; a hub that builds the local form for a remote pane fails on every remote pane, and blames the terminal while doing it |
 | **ssh joins its command arguments into one string and hands that to the REMOTE user's shell**, which expands the target before tmux sees it. Measured over a live control master: `ssh -S <ctl> nuc 'echo -t $0'` printed `-t bash`, and the argv the hub built — `ssh -S <ctl> -t nuc tmux attach -t $0` — failed `can't find session: bash`, rc=1, 0 clients, while `… -t '$0'` attached: 1 client, and the remote server's own status line on screen | the remote attach TARGET is shell-quoted (`internal/ui`'s `shellQuote`). This is a SECOND shell and it is not the one `shellJoin` answers to — that one is on THIS machine, between tmux and the payload. The remote path has both, and only the near one was handled: remote attach had never worked, for any session |
+| **A QUOTED PROGRAM NAME IS LEGAL POSIX AND A PARSE ERROR IN A SHELL THAT IS NOT.** ssh hands the command to the remote user's LOGIN shell, and a new host on this fleet was a MacBook whose login shell is Nushell. Measured over a live master: the payload the seam built, `'tmux' 'list-panes' '-a' '-F' '#{pane_id}'`, answered `Error: nu::parser::parse_mismatch` — and answered it at **rc=0**, so the hub read a poll that had succeeded and found no panes. With the program name bare, the same shell runs it and tmux answers `no server running on /private/tmp/tmux-501/default` | the remote payload quotes every ARGUMENT and leaves the program NAME bare (`ShellJoinCommand`). The name is a literal this program chooses, so there is nothing in it to expand; the arguments are where that risk lives and they stay quoted. A name that is not a bare word is quoted anyway, because that direction merely fails on an exotic shell while the other would be an injection. The host had sat at `connecting` for as long as it was enabled, which is the cost of a remote failure that returns rc=0 |
 | **the outer tmux takes the prefix.** Measured with a real client on a pty and both servers on the default `C-b`: `C-b d` detached the **OUTER** session, leaving the nested one attached; `C-b C-b d` (send-prefix) reached the inner; and with the outer session on `C-Space`, plain `C-b d` reached the inner | a distinct prefix works only when the hub CREATES the session. Running inside the user's own tmux — the common case — it cannot change their prefix, so the hub must SAY that leaving an attached session takes `C-b C-b d`, before `a` is pressed |
 | a session **name** does not survive a rename (`has-session -t <old>` → rc=1 immediately after), while `#{session_id}` (`$N`) still resolves | attach targets the session id; a name is only a fallback |
 | classifying a socket as **live** can only be done by waiting to NOT receive an EOF | the dial is a diagnostic, never a precondition: on the happy path it added its full timeout per host per tick |
@@ -3525,6 +3526,7 @@ short subsequence exists somewhere in a sentence.
 | `test`   | 4 | 17 | |
 | `gis`    | 2 | 10 | |
 | `opssch` | **0** | 4 | the gesture fzf exists for: typing across a separator |
+| `won`    | **0** | 1 | |
 
 Every flooding query above HAS substring hits, so the fallback cannot fire for it — the bad cases are
 excluded BY CONSTRUCTION rather than by a match-score threshold nobody could justify. `opssch` finds
@@ -3767,6 +3769,16 @@ merely add clutter — it degrades the first one.
   tmux commands. That is also what repairs the sessions an older hub left reading `sh`, and it sets
   `automatic-rename off` beside the rename, because a window made before `-n` was passed is still
   being renamed by tmux.
+- **It asks ONCE for a given name, and then concedes the window — because the hub is not the only
+  program that writes one.** Reported as a status line that shimmers, and measured on the operator's
+  own server: three windows alternating several times a second between the alias they had typed and the
+  raw Claude session name (`frontend-troubleshooting` ↔ `20260810--troubleshooting`), with
+  `automatic-rename` OFF, so tmux was not the other writer — Claude Code names the window after its own
+  session. Differences-only is not the fix for that, it is the ENGINE: two writers plus "write whenever
+  it differs" is a loop by construction, and it runs at poll rate. So the hub remembers the name it last
+  asked a window to take and does not ask twice; a newly typed alias is a new name and gets one fresh
+  attempt. The operator still reads the alias where they asked for it, on the dashboard, and the loser of
+  that race is the `C-b w` label rather than anything actionable.
 - **A name is bounded at 80 columns** — the width §16 commits to, so a name that fits the dashboard
   fits here — and in COLUMNS, since a CJK name is two per rune. Not the footer's 20: a footer shares
   its line with other claimants and a window name competes with nothing. Measured against the real

@@ -425,9 +425,13 @@ func (r *execRunner) build(t Target, args []string) ([]string, error) {
 	// only because exec leaves cmd.Stdin nil, i.e. /dev/null. Adding `-n` "for
 	// hygiene" would make the far `load-buffer -` read EOF, so a send would land
 	// EMPTY at rc=0 — the exact silent truncation InputRunner exists to close.
-	cmdline := append([]string{"tmux"}, t.TmuxArgs...)
-	cmdline = append(cmdline, args...)
-	payload := ShellJoin(cmdline)
+	// The program name stays BARE and only its arguments are quoted — see ShellJoinCommand. A
+	// quoted `'tmux'` is legal POSIX and is a parse error in a shell that is not POSIX, which made
+	// a macOS host running Nushell report zero panes at rc=0.
+	remote := make([]string, 0, len(t.TmuxArgs)+len(args))
+	remote = append(remote, t.TmuxArgs...)
+	remote = append(remote, args...)
+	payload := ShellJoinCommand("tmux", remote)
 	return []string{"ssh", "-o", "BatchMode=yes", "-o", "ProxyCommand=false",
 		"-S", t.ControlPath, t.SSHDest, payload}, nil
 }

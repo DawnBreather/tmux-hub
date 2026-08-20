@@ -11,7 +11,7 @@ import (
 
 // A HOST WHOSE TMUX POLL STOPS ANSWERING MUST NOT SPLIT ONE SESSION INTO TWO ROWS.
 //
-// Reported from a live screen as two things, which are one: `ansible-jr-mib` drawn twice on the same
+// Reported from a live screen as two things, which are one: `ansible-ci-ops` drawn twice on the same
 // host with the same name and the same path, and states "blinking" between `works` and `stale`.
 //
 // The mechanism, measured. `MarkHostStale` marks a host's PANE rows stale and deliberately leaves its

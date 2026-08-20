@@ -111,7 +111,7 @@ func TestASocketOverrideInTheHostsFileReachesTmux(t *testing.T) {
 	// nothing.
 	assertSpawnedArgv(t, got, []string{"-o", "BatchMode=yes", "-o", "ProxyCommand=false",
 		"-S", hub.ControlPathFor(rt, "nuc"), "nuc",
-		`'tmux' '-L' 'work' 'list-panes' '-a' '-F' '#{pane_id}'`})
+		`tmux '-L' 'work' 'list-panes' '-a' '-F' '#{pane_id}'`})
 }
 
 // The other half of the same wire: a file with no `tmux_args` spawns the argv it always
@@ -123,5 +123,5 @@ func TestAHostWithNoOverrideStillSpawnsThePlainArgv(t *testing.T) {
 	got := pollThroughTheSeam(t, "[[host]]\nalias = \"nuc\"\nenabled = true\n")
 	assertSpawnedArgv(t, got, []string{"-o", "BatchMode=yes", "-o", "ProxyCommand=false",
 		"-S", hub.ControlPathFor(rt, "nuc"), "nuc",
-		`'tmux' 'list-panes' '-a' '-F' '#{pane_id}'`})
+		`tmux 'list-panes' '-a' '-F' '#{pane_id}'`})
 }

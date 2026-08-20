@@ -555,14 +555,24 @@ func TestARemoteTargetBuildsOneSSHInvocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertArgv(t, got, "ssh", "-o", "BatchMode=yes", "-o", "ProxyCommand=false",
-		"-S", "/run/cm-nuc", "nuc", `'tmux' 'list-panes' '-a' '-F' '#{pane_id}'`)
-	// Said again as two properties rather than as one literal, because these are the
-	// two halves that a wrong wrapping breaks separately: the payload must be a
-	// quoted tmux command line, and the format must survive quoting intact — an
-	// unquoted `#{pane_id}` would be globbed by the far shell.
+		"-S", "/run/cm-nuc", "nuc", `tmux 'list-panes' '-a' '-F' '#{pane_id}'`)
+	// Said again as two properties rather than as one literal, because these are the two halves
+	// that a wrong wrapping breaks separately, and they pull in OPPOSITE directions:
+	//
+	//   - the program name must be BARE, or a login shell that is not POSIX cannot parse the line
+	//     at all. Measured on a live macOS host running Nushell: `'tmux' …` answers
+	//     `Error: nu::parser::parse_mismatch`, and answers it at rc=0, so the poll looked like a
+	//     host with no panes and the host never left `connecting`.
+	//   - every ARGUMENT must stay quoted, or the far shell globs `#{pane_id}` and expands `$0`.
+	//
+	// A single literal states both, but only badly: when it breaks, the failure names a whole argv
+	// and not which of the two rules was lost.
 	payload := got[len(got)-1]
-	if !strings.HasPrefix(payload, "'tmux'") {
-		t.Errorf("the payload must be a quoted tmux command line, got %q", payload)
+	if !strings.HasPrefix(payload, "tmux '") {
+		t.Errorf("the payload must begin with a BARE program name, got %q", payload)
+	}
+	if strings.HasPrefix(payload, "'") {
+		t.Errorf("the program name is quoted, which a non-POSIX login shell refuses: %q", payload)
 	}
 	if !strings.Contains(payload, `'#{pane_id}'`) {
 		t.Errorf("the format must survive quoting intact, got %q", payload)
@@ -614,7 +624,7 @@ func TestARemoteRunInputCarriesThePayloadOnStdin(t *testing.T) {
 		t.Fatalf("the shim printed nothing recognisable: %q", res.Stdout)
 	}
 	const wantArgv = `[-o] [BatchMode=yes] [-o] [ProxyCommand=false] [-S] [/run/cm-nuc] [nuc] ` +
-		`['tmux' 'load-buffer' '-b' 'probe' '-'] `
+		`[tmux 'load-buffer' '-b' 'probe' '-'] `
 	if argvLine != wantArgv {
 		t.Errorf("ssh received a different argv:\n got %q\nwant %q", argvLine, wantArgv)
 	}
@@ -645,7 +655,7 @@ func TestARemoteRunSpawnsSSHAndNotLocalTmux(t *testing.T) {
 		t.Fatalf("Run: %v (stderr=%q)", err, res.Stderr)
 	}
 	const wantArgv = `[-o] [BatchMode=yes] [-o] [ProxyCommand=false] [-S] [/run/cm-nuc] [nuc] ` +
-		`['tmux' 'list-panes' '-a' '-F' '#{pane_id}'] ` + "\n"
+		`[tmux 'list-panes' '-a' '-F' '#{pane_id}'] ` + "\n"
 	if res.Stdout != wantArgv {
 		t.Errorf("the poll path spawned a different process:\n got %q\nwant %q", res.Stdout, wantArgv)
 	}

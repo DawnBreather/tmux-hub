@@ -40,9 +40,13 @@ func TestTheSocketOverrideLandsAfterTheSocketAndBeforeTheVerb(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build(remote with an override): %v", err)
 	}
-	// Inside the payload, quoted per element like everything else the far shell sees.
+	// Inside the payload, every ARGUMENT quoted and the program name BARE. The name used to be
+	// quoted too, and `'tmux' …` is legal POSIX but a parse error in a shell that is not POSIX —
+	// measured against a live macOS host running Nushell, which answered
+	// `Error: nu::parser::parse_mismatch` at rc=0, so the hub saw a poll that succeeded with no
+	// panes in it and the host never left `connecting`. See ShellJoinCommand.
 	assertArgv(t, got, "ssh", "-o", "BatchMode=yes", "-o", "ProxyCommand=false",
-		"-S", "/run/cm-nuc", "nuc", `'tmux' '-L' 'work' 'list-panes' '-a' '-F' '#{pane_id}'`)
+		"-S", "/run/cm-nuc", "nuc", `tmux '-L' 'work' 'list-panes' '-a' '-F' '#{pane_id}'`)
 }
 
 // A target with no override is byte-for-byte what it was before it could have one. An
