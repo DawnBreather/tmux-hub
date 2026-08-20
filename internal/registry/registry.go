@@ -162,6 +162,15 @@ type Pane struct {
 	// for a listing row that folds into a pane the hub polls. Each has a test that goes THROUGH the
 	// producer rather than building a Pane by hand.
 	AgentWord string
+	// AgentStatus is the listing's `status` field, RAW, and it is the premise behind `works`.
+	//
+	// It is here for the reason AgentWord is: a reader who doubts a row's state cannot recover this
+	// from anything downstream. `status` is not another name for `state` — measured on 34 live records,
+	// 5 carried `working` with `busy` and one carried `working` with `idle`, and that one was a session
+	// the operator reported as not working while the row read `works`, its pid pointing at a parked
+	// `claude bg-spare`. `agents.Session.Attention` is where the refinement lives; this is what makes
+	// the answer explicable without a three-hour investigation.
+	AgentStatus string
 	// AgentPID is the pid the LISTING gave for this session, and its only job is to say whether the
 	// host that reported the word can SEE the worker.
 	//
@@ -462,7 +471,7 @@ func (r *Registry) UpdateAgents(host string, ss []agents.Session, now time.Time)
 			// than on the word — because a word this version cannot interpret is still a claim by the
 			// machine that owns the process. Measured as a hole in the first version of this rule: with
 			// the owner reporting a word the hub does not know, `Attention()` returned "" and the fold
-			// skipped it entirely, so the pid-less host's `blocked` dev and the row read `needs` on a
+			// skipped it entirely, so the pid-less host's `blocked` won and the row read `needs` on a
 			// working session. A property test over the whole vocabulary — every owner word against
 			// every sharer word, both poll orders — is what found it.
 			if paneRow.AgentClaimAt.Equal(now) &&
@@ -470,6 +479,7 @@ func (r *Registry) UpdateAgents(host string, ss []agents.Session, now time.Time)
 				continue
 			}
 			paneRow.AgentPID, paneRow.AgentClaimAt = s.PID, now
+			paneRow.AgentStatus = s.Status
 			// The WORD is kept only when there is one: a listing that reports neither `state` nor
 			// `status` — measured, 2 of 21 sessions — must not erase the last word that did, because
 			// `AgentWord` is what `K` and the wake dialog read to say whether the worker is gone. The
@@ -566,6 +576,7 @@ func (r *Registry) UpdateAgents(host string, ss []agents.Session, now time.Time)
 		p.SessionID = s.SessionID
 		p.ClassifiedState = state.FromWord(s.Attention())
 		p.AgentWord, p.AgentPID = s.State, s.PID
+		p.AgentStatus = s.Status
 		markStateEntry(p, now, firstAgentSight)
 		p.Activity = s.StartedAt
 		p.SeenAt = now

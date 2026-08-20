@@ -35,6 +35,19 @@ type Session struct {
 	StartedAt time.Time
 	State     string // normalised from `state` or `status`; "" when neither is given
 	PID       int    // 0 when the version does not report one
+
+	// Status is the listing's `status` field kept RAW, and it is not a duplicate of State.
+	//
+	// This field was read as the older half of a version pair — `state` on 2.1.226+, `status` on
+	// 2.1.224, the same fact under two names — and that is no longer what the fleet reports. Measured
+	// on 34 live records: 5 carry `state=working` WITH `status=busy`, and one carries `state=working`
+	// with `status=idle`. So they arrive together and they are not the same question: `state` is the
+	// session's lifecycle word and `status` is whether its worker is presently doing anything.
+	//
+	// The one disagreeing record was the session the operator reported as "not working, shown as
+	// works". Keeping the raw value is what lets Attention refine on it and what lets `--status`
+	// publish the premise its answer came from.
+	Status string
 }
 
 // Attention maps Claude's own word to what the hub sorts by. An unknown or
@@ -43,9 +56,13 @@ type Session struct {
 // a real, measured case.
 func (s Session) Attention() string {
 	// The vocabulary is a VERSION PAIR, and only half of it was here. 2.1.226+ reports
-	// `working`/`done` in `state`; 2.1.224 reports `busy`/`idle` in `status`, meaning
-	// the same two things, and the constructor above folds `status` into `State` — so
-	// both halves arrive through this switch and only one was named.
+	// `working`/`done` in `state`; 2.1.224 reports `busy`/`idle` in `status`, and where a version
+	// sends only one of the two the constructor above folds it into `State` — so both halves arrive
+	// through this switch and only one was named.
+	//
+	// A version that sends BOTH is a different case, and reading it as the pair is what made a parked
+	// session read `works`: there `status` is not another name for `state`, it says whether the worker
+	// is presently occupied. That refinement is in the `working` branch, with its measurement.
 	//
 	// Measured over 21 real sessions on two hosts: blocked 5, idle 7, working 3,
 	// busy 2, done 2, neither 2. Without `busy` and `idle` this returned "" for ELEVEN
@@ -57,6 +74,23 @@ func (s Session) Attention() string {
 	case "blocked":
 		return "needs"
 	case "working", "running", "busy":
+		// `status` REFINES this, it does not repeat it. Measured on 34 live records: `working` comes
+		// with `busy` five times and with `idle` once — and that once was the session the operator
+		// reported as not working while the row read `works`. Its pid pointed at a `claude bg-spare`,
+		// a pre-warmed process parked on a claim socket, so the pid says this host can SEE a process
+		// and never that the process is doing anything.
+		//
+		// Narrow on purpose. Only `working` is demoted, and only to `idle` — a LIVE session with a
+		// prompt waiting, which is exactly what a parked worker is. `blocked` keeps `needs` even
+		// beside `status=idle` (1 of 34 records), because burying a session that is waiting for the
+		// operator is the one direction this repo refuses; `done` keeps `done` (2 of 34) because a
+		// finished job is more specific than an unoccupied one.
+		//
+		// On the version that reports only `status`, State was filled FROM it, so `idle` there took
+		// the `idle` case below and never reaches this one.
+		if strings.EqualFold(s.Status, "idle") {
+			return "idle"
+		}
 		return "works"
 	case "done", "completed", "stopped":
 		// NOT "idle". All three mean the job ENDED, and idle in the hub's vocabulary means a
@@ -123,8 +157,11 @@ func Parse(b []byte) ([]Session, error) {
 		//
 		// The back-fill existed only so the registry's row KEY had a stable string. That is the
 		// key builder's business and it does it there (`agentRowID`).
-		// `state` on 2.1.226+, `status` on 2.1.224. Prefer whichever is there.
+		// `state` on 2.1.226+, `status` on 2.1.224. Prefer whichever is there — and keep the raw
+		// `status` as well, because a version that sends BOTH is sending two different facts (see
+		// Session.Status). The fallback stays for the version that sends only one.
 		s.State = r.State
+		s.Status = r.Status
 		if s.State == "" {
 			s.State = r.Status
 		}

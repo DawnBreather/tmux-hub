@@ -30,7 +30,8 @@ func TestTheReportCarriesTheClaimItsStateIsQuoting(t *testing.T) {
 		{Kind: registry.KindPane, Host: "local", Session: "seedtool-development-77ef6f5e",
 			Window: "seedtool-development", PaneID: "%28", Command: "sh",
 			ClaudeSession: "77ef6f5e-a719-4cf9-8dbd-722e986f2604",
-			AgentState:    state.Works, AgentWord: "working", AgentPID: 237624, AgentSeenAt: now},
+			AgentState:    state.Works, AgentWord: "working", AgentStatus: "busy", AgentPID: 237624,
+			AgentSeenAt: now},
 		// The same session as a host that only shares the store would report it: a word, no pid.
 		{Kind: registry.KindAgent, Host: "side-desk", Session: "20260818--cicd",
 			AgentID: "30f3382b", SessionID: "30f3382b-0000", PaneID: "agent:30f3382b@ee42d26c",
@@ -80,5 +81,21 @@ func TestTheReportCarriesTheClaimItsStateIsQuoting(t *testing.T) {
 	if strings.Count(text, `"agent_pid"`) != 1 {
 		t.Errorf("`agent_pid` appears %d times, want 1 — only the host that could see the worker:\n%s",
 			strings.Count(text, `"agent_pid"`), text)
+	}
+	// AND THE PREMISE BEHIND `works`. `status` is not another name for `state`: measured on 34 live
+	// records, `working` came with `busy` five times and with `idle` once, and that once was a session
+	// the operator reported as not working while the row read `works`. A reader who doubts a state
+	// needs the field the decision turned on, or the diagnosis costs an investigation instead of a
+	// `jq`. Only the row that quoted a `status` carries it.
+	if strings.Count(text, `"agent_status"`) != 1 {
+		t.Errorf("`agent_status` appears %d times, want 1 — the field `works` was decided from:\n%s",
+			strings.Count(text, `"agent_status"`), text)
+	}
+	if owner.AgentStatus != "busy" {
+		t.Errorf("the owner's row reports status %q, want \"busy\"", owner.AgentStatus)
+	}
+	if sharer.AgentStatus != "" {
+		t.Errorf("the sharer's row invented a status %q — a listing that sent none must show none",
+			sharer.AgentStatus)
 	}
 }

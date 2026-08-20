@@ -84,9 +84,13 @@ unidentified target is one every send refuses.
     ./tmux-hub status          # one poll cycle as JSON, for scripts and monitors
 
 Each row in that JSON carries the claim its state is quoting — `agent_word` is the
-listing's own word for the session and `agent_pid` the pid the reporting host gave
-for it. A pid means that host can see the worker, so a state beside `agent_word`
-with no `agent_pid` came from a machine that shares `~/.claude` and nothing else.
+listing's own word for the session, `agent_status` whether that session's worker is
+presently occupied, and `agent_pid` the pid the reporting host gave for it. A pid
+means that host can see the worker, so a state beside `agent_word` with no
+`agent_pid` came from a machine that shares `~/.claude` and nothing else — and a
+pid alone is not work, since it routinely points at a pre-warmed process parked
+between jobs. That is what `agent_status` separates: `working` with `busy` is work,
+`working` with `idle` is a session waiting for you.
 
 The hub opens on the FILESYSTEM view: hosts are volumes, directories are
 directories, sessions are files, and what you pinned is a `FAVOURITES` band at the

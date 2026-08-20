@@ -55,8 +55,9 @@ type PaneReport struct {
 	//
 	// Omitted when empty rather than zeroed, so a reader can tell "this row quotes no listing" — a
 	// plain tmux pane that is nobody's Claude session — from "the listing said nothing".
-	AgentWord string `json:"agent_word,omitempty"`
-	AgentPID  int    `json:"agent_pid,omitempty"`
+	AgentWord   string `json:"agent_word,omitempty"`
+	AgentStatus string `json:"agent_status,omitempty"`
+	AgentPID    int    `json:"agent_pid,omitempty"`
 }
 
 type Report struct {
@@ -84,7 +85,7 @@ func BuildReport(hosts []Host, panes []registry.Pane) Report {
 			Kind: p.Kind, Host: p.Host, PaneID: p.PaneID, AgentID: p.AgentID, AlsoOn: p.AlsoOn, Session: p.Session, Window: p.Window,
 			Command: p.Command, State: p.State().String(),
 			Activity: p.Activity.Unix(), Content: content,
-			AgentWord: p.AgentWord, AgentPID: p.AgentPID,
+			AgentWord: p.AgentWord, AgentStatus: p.AgentStatus, AgentPID: p.AgentPID,
 		})
 	}
 	return r

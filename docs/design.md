@@ -2020,7 +2020,17 @@ So on 2.1.224 the listing **does** include interactive sessions, each with a `pi
 a direct join key to a pane, since the delta already carries `#{pane_pid}`. On 2.1.226 and 2.1.227
 it does not. A consumer must therefore:
 
-- read `state` **or** `status`, whichever is present, and tolerate neither;
+- read `state` **or** `status`, whichever is present, and tolerate neither — **and when a version
+  sends BOTH, they are not the same fact and `status` refines `state`.** Read as a version pair, this
+  is what made a parked session read `works`: measured on 34 live records in one run, `state=working`
+  came with `status=busy` five times and with `status=idle` once, and that once was the session the
+  operator reported as not working. Its `pid` pointed at a `claude bg-spare` — a pre-warmed process
+  parked on a claim socket — so a pid says the reporting host can SEE a process and never that the
+  process is doing anything. `state` is the session's lifecycle word; `status` is whether its worker is
+  presently occupied. The refinement is deliberately narrow: only `working` is demoted, and only to
+  `idle`, because `needs` must never be buried (1 of the 34 was `blocked` beside `status=idle`) and
+  `done` is more specific than an unoccupied worker (2 of the 34). One row of 63 moved on the live
+  fleet, and it was the reported one;
 
 - **pass `--debug-file` where the verb accepts it.** A measured failure wrote nothing to stdout and nothing to stderr; the reason existed only there, so without it a failure is invisible and the hub reports a wrong answer confidently. Measured on both versions: `claude logs` ACCEPTS the flag and writes the file even for a bogus id (620 B locally, 278 B on `nuc`), `claude agents` REJECTS it (rc=1 in ~165 ms, `error: unknown option '--debug-file'`, no file, 6 of 6 runs), and `attach` is UNTESTED — so the listing is judged by exit code alone, `logs` is the reading that can be instrumented, and §22.3's payload rests on the untested cell (§22.6);
 - tolerate `kind: interactive` as well as `background`;
