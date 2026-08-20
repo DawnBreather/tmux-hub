@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # to create the release and upload its archives
+
+jobs:
+  goreleaser:
+    name: build and publish
+    runs-on: ubuntu-latest
+    env:
+      # Absent by default. A cross-repository push to the Homebrew tap needs its own token,
+      # because GITHUB_TOKEN is scoped to this repository; see CONTRIBUTING.md.
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # goreleaser reads tags to build the changelog
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The tag must not be the first time the suite runs against this tree.
+      - name: gates
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test ./...
+
+      - name: release with the Homebrew cask
+        if: ${{ env.HOMEBREW_TAP_TOKEN != '' }}
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Binaries still ship without the tap token: a missing optional secret must not fail a
+      # release, and the cask can be updated afterwards.
+      - name: release binaries only (no tap token configured)
+        if: ${{ env.HOMEBREW_TAP_TOKEN == '' }}
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: "~> v2"
+          args: release --clean --skip=homebrew
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

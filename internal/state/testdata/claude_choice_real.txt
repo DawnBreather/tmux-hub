@@ -1,0 +1,6 @@
+
+ Claude Code'll be able to read, edit, and execute files here.
+
+ Security guide
+
+ ❯ 1. Yes, I trust this folder

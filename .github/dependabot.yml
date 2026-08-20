@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # The workflows pin every action by commit SHA, which is the safe form and also the form that
+  # never updates itself. Dependabot is what moves those pins.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

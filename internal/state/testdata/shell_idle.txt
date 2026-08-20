@@ -1,0 +1,6 @@
+ok   pkg/foo 0.4s
+FAIL pkg/bar 1.2s  assertion failed
+
+
+tmux-hub  main
+❯

@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Least privilege: nothing here writes to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: gofmt, vet, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "these files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: build
+        run: go build ./...
+
+      # Three vets, because two of the packages are behind build tags and the default vet
+      # cannot see them — a signature change there stays broken silently.
+      - name: vet
+        run: go vet ./...
+      - name: vet (e2e tag)
+        run: go vet -tags e2e ./internal/e2e/
+      - name: vet (mockup tag)
+        run: go vet -tags mockup ./internal/ui/
+
+      - name: test
+        run: go test ./...
+      - name: test -race
+        run: go test -race ./...
+
+      # The two HTML documents in docs/ are generated from the renderer and are byte-reproducible
+      # (every scene is stamped at one fixed instant). Regenerating and requiring no diff proves
+      # the committed documents still match the code that draws them.
+      - name: the generated documents match the code
+        run: |
+          go test -tags mockup -run TestGenerate ./internal/ui/
+          git diff --exit-code -- docs/
+
+  cross:
+    name: cross-compile ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      # Every platform a release ships is built on every push, so a tag cannot be the first
+      # time a target is tried. The peer-credential lookup and the process walk are per-platform
+      # files, and the default vet on the runner's own GOOS cannot see the others — which is how
+      # `syscall.SO_PEERCRED` reached a release config while being Linux-only.
+      - run: GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -o /dev/null ./cmd/tmux-hub
+      - run: GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go vet ./...

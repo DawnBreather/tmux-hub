@@ -1,0 +1,2246 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<title>tmux-hub — интерфейс целиком</title><style>
+:root{--bg:#12131a;--panel:#181a22;--ink:#dfe3ee;--dim:#8b93a7;--line:#282b36;--acc:#7aa2f7;--warn:#e0af68}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+ font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
+header{padding:36px 40px 22px;border-bottom:1px solid var(--line)}
+h1{margin:0 0 8px;font-size:24px;font-weight:600;letter-spacing:-.01em}
+header p{margin:0;color:var(--dim);max-width:70ch}
+nav{position:sticky;top:0;z-index:5;background:rgba(18,19,26,.94);backdrop-filter:blur(8px);
+ border-bottom:1px solid var(--line);padding:12px 40px;display:flex;gap:8px;flex-wrap:wrap}
+nav a{color:var(--dim);text-decoration:none;font-size:13px;padding:5px 11px;border:1px solid var(--line);border-radius:999px}
+nav a:hover{color:var(--ink);border-color:var(--acc)}
+main{padding:8px 40px 80px}
+section{padding-top:40px}
+h2{font-size:19px;margin:0 0 6px;font-weight:600}
+.intro{color:var(--dim);max-width:78ch;margin:0 0 26px}
+.shot{margin:0 0 30px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.shot > figcaption{padding:14px 18px;border-bottom:1px solid var(--line)}
+.t{font-weight:600;font-size:15px}
+.meta{color:var(--dim);font-size:13px;margin-top:5px}
+.meta b{color:var(--warn);font-weight:600}
+.look{color:var(--dim);font-size:13px;margin-top:7px;border-left:2px solid var(--acc);padding-left:10px}
+pre{margin:0;padding:18px;overflow-x:auto;background:#0d0e13;
+ font:12.5px/1.45 "SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+ color:#c8cee0;white-space:pre;tab-size:8}
+.dim{color:var(--dim)}
+footer{padding:26px 40px 60px;border-top:1px solid var(--line);color:var(--dim);font-size:13px;max-width:80ch}
+code{background:#000;padding:1px 5px;border-radius:4px;font-size:12.5px}
+</style></head><body>
+<header><h1>tmux-hub — интерфейс целиком</h1>
+<p>Каждый экран ниже — это байты, которые печатает <code>View()</code>. Ничего не нарисовано руками:
+макет с выдуманными экранами позволил бы одобрить раскладку, которой программа не выдаёт.
+Собрано генератором <code>internal/ui/mockup_test.go</code>.</p></header>
+<nav><a href="#s0">Дашборд</a><a href="#s1">Рассылка промпта</a><a href="#s2">Убрать шум</a><a href="#s3">Запустить агента</a><a href="#s4">Рестарт и убийство</a><a href="#s5">История и переотправка</a><a href="#s6">Деградация и края</a><a href="#s7">Первая отрисовка и статусы хостов</a><a href="#s8">Все причины подтверждения</a><a href="#s9">Тридцать панелей на 24 строках</a><a href="#s10">Хаб внутри tmux — то, что видно всегда</a><a href="#s11">Выбор хостов — первый запуск</a><a href="#s12">Имя сессии — N</a><a href="#s13">Ширина, обрезка и проектный вид</a><a href="#s14">Своё против чужого: заголовки, id панелей и окна хаба</a><a href="#s15">Файловая система: тома, каталоги, сессии</a></nav><main><section id="s0"><h2>1. Дашборд</h2><p class="intro">Одна и та же группа панелей на трёх ширинах. Раскладка выбирается сама: до 100 колонок только инбокс, до 160 инбокс и одна плитка, дальше сетка.</p><figure class="shot"><figcaption>
+<div class="t">Дашборд, 80 колонок — inbox-only</div>
+<div class="meta"><b>80×24</b> · хаб только запущен, ничего не выбрано</div>
+<div class="look">читается ли состояние фронта одним взглядом: кто ждёт ответа, кто работает, кто затих. Хватает ли 80 колонок, и что даёт лишняя ширина.</div>
+</figcaption><pre>tmux-hub  6 sessions
+&gt;  ⚑ needs  claude   local/api %0
+   ✱ quiet  claude   nuc/deploy %4
+   ▸ idle   tail     local/ops
+   · works  claude   local/api %1
+   · works  make     local/api %2
+   · works  claude   nuc/deploy %5
+
+
+
+
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">Дашборд, 120 колонок — inbox+tile</div>
+<div class="meta"><b>120×24</b> · хаб только запущен, ничего не выбрано</div>
+<div class="look">читается ли состояние фронта одним взглядом: кто ждёт ответа, кто работает, кто затих. Хватает ли 80 колонок, и что даёт лишняя ширина.</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">Дашборд, 190 колонок — inbox+grid</div>
+<div class="meta"><b>190×24</b> · хаб только запущен, ничего не выбрано</div>
+<div class="look">читается ли состояние фронта одним взглядом: кто ждёт ответа, кто работает, кто затих. Хватает ли 80 колонок, и что даёт лишняя ширина.</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure></section><section id="s1"><h2>2. Рассылка промпта</h2><p class="intro">Главный сценарий: выбрать несколько агентов и отправить им один промпт. Правило проекта — писать можно только в то, что видно на экране.</p><figure class="shot"><figcaption>
+<div class="t">1. Ничего не выбрано</div>
+<div class="meta"><b>120×24</b> · исходное состояние</div>
+<div class="look">видно ли, что делать дальше, без подсказки</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Выбраны две панели на разных хостах</div>
+<div class="meta"><b>120×24</b> · space на двух строках</div>
+<div class="look">заметна ли отметка выбора и счётчик</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+ ◆ · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+ ◆ · works  %5   claude
+
+
+
+
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+┌─ nuc deploy %5 ──────────────────────────────────────────────────────┐
+│  Grepping for call sites…                                            │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 2 marked</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Ящик ввода, пустой</div>
+<div class="meta"><b>120×24</b> · нажал i</div>
+<div class="look">ясно ли, куда уйдёт текст и сколько цели</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+ ◆ · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+ ◆ · works  %5   claude
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+┌─ nuc deploy %5 ──────────────────────────────────────────────────────┐
+│  Grepping for call sites…                                            │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 2 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+alt+enter: newline  ·  enter: send  ·  esc: keep draft and leave</pre></figure><figure class="shot"><figcaption>
+<div class="t">4. Набранный многострочный промпт</div>
+<div class="meta"><b>120×24</b> · печатал, alt+enter для новой строки</div>
+<div class="look">видно ли, что enter отправит, а не добавит строку</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+ ◆ · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+ ◆ · works  %5   claude
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+┌─ nuc deploy %5 ──────────────────────────────────────────────────────┐
+│  Grepping for call sites…                                            │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 2 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+прочитай docs/design.md §18 и скажи, где ключ скрытия
+держится на позиции
+alt+enter: newline  ·  enter: send  ·  esc: keep draft and leave</pre></figure><figure class="shot"><figcaption>
+<div class="t">5. Подтверждение: больше одной цели</div>
+<div class="meta"><b>120×24</b> · нажал enter</div>
+<div class="look">названы ли цели и причина; понятно ли, что подтверждаю</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+ ◆ · works  %1   claude
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+┌─ nuc deploy %5 ──────────────────────────────────────────────────────┐
+│  Grepping for call sites…                                            │
+local up · nuc up · → 2 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Confirm send to 2 targets:
+    local %1
+    nuc %5
+  │ прочитай docs/design.md §18 и скажи, где ключ скрытия
+  │ держится на позиции
+  • more than one target is selected
+enter: send anyway  ·  any other key: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">6. Отправлено</div>
+<div class="meta"><b>120×24</b> · подтвердил</div>
+<div class="look">говорит ли итог, что текст реально доехал, а не просто был послан</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+отправлено в 2 панели · подтверждено на экране · local up · nuc up</pre></figure></section><section id="s2"><h2>3. Убрать шум</h2><p class="intro">Хост копит панели, которые не агенты: сборка, логи, htop. Скрытие постоянное — «больше не показывай», а не «не сейчас». Одно правило: панель, которая ждёт ответа, всплывает сама.</p><figure class="shot"><figcaption>
+<div class="t">1. Шум в списке</div>
+<div class="meta"><b>120×24</b> · исходное: make и tail не агенты и никогда ими не станут</div>
+<div class="look">сколько внимания забирают строки, которые никогда не потребуют ответа</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Две панели скрыты</div>
+<div class="meta"><b>120×24</b> · x на каждой</div>
+<div class="look">видно ли в подвале, что они скрыты, а не пропали</div>
+</figcaption><pre>tmux-hub  4 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+LOCAL API  (cont.)
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · 2 hidden</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Скрытая панель просит ввода — и всплыла</div>
+<div class="meta"><b>120×24</b> · агент в скрытой панели задал вопрос</div>
+<div class="look">понятно ли, почему строка вернулась; заметна ли пометка [↑]</div>
+</figcaption><pre>tmux-hub  5 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+LOCAL API  (cont.)
+   ⚑ needs  %1   claude [↑]
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · 2 hidden · 1 of them waiting for input</pre></figure><figure class="shot"><figcaption>
+<div class="t">4. Показать скрытое</div>
+<div class="meta"><b>120×24</b> · нажал X</div>
+<div class="look">отличимы ли скрытые от обычных, пока они показаны</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail [x]
+LOCAL API  (cont.)
+   ⚑ needs  %1   claude [↑]
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · X shows all rows · 2 marked hidden</pre></figure></section><section id="s3"><h2>4. Запустить агента</h2><p class="intro">Хаб сам придумывает uuid сессии и передаёт его claude, поэтому у созданной панели личность известна с рождения. Полная форма каждый раз, без профилей.</p><figure class="shot"><figcaption>
+<div class="t">1. Форма запуска: каталог строки под курсором уже подставлен</div>
+<div class="meta"><b>120×24</b> · нажал n</div>
+<div class="look">видно ли все пять решений сразу и какое из них требует ввода</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Start a Claude Code session
+
+  host:  local
+› dir:   (path to the project)
+  model: opus
+  mode:  default
+  where: a new window
+
+enter: create · esc: cancel · ctrl+u: clear · tab/shift+tab: move · left/right: change
+
+</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Тот же экран, когда у строки есть каталог</div>
+<div class="meta"><b>120×24</b> · нажал n на строке из проекта billing-iac</div>
+<div class="look">подставлен ли путь и названа ли клавиша, которой его стирают</div>
+</figcaption><pre>tmux-hub  1 session
+&gt;  ✱ quiet  nuc/api
+
+
+
+
+
+
+┌─ nuc api %9 ─────────────────────────────────────────────────────────┐
+│  ❯                                                                   │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Start a Claude Code session
+
+  host:  nuc
+› dir:   /home/dev/lab/streams/orbits/billing-iac
+  model: opus
+  mode:  default
+  where: a new window
+
+enter: create · esc: cancel · ctrl+u: clear · tab/shift+tab: move · left/right: change
+
+</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Введён каталог</div>
+<div class="meta"><b>120×24</b> · tab на поле каталога, напечатал путь</div>
+<div class="look">понятно ли, где фокус</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Start a Claude Code session
+
+  host:  local
+› dir:   /home/dev/lab/streams/experiments/tmux-hub
+  model: opus
+  mode:  default
+  where: a new window
+
+enter: create · esc: cancel · ctrl+u: clear · tab/shift+tab: move · left/right: change
+
+</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Каталога нет</div>
+<div class="meta"><b>120×24</b> · enter с опечаткой в пути</div>
+<div class="look">несёт ли сообщение ИСПРАВЛЕНИЕ, а не только факт поломки. tmux такой путь принял бы молча и запустил агента в $HOME</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Start a Claude Code session
+
+  host:  local
+› dir:   /home/dev/lab/typo
+  model: opus
+  mode:  default
+  where: a new window
+
+⚠ directory does not exist: /home/dev/lab/typo
+enter: create · esc: cancel · ctrl+u: clear · tab/shift+tab: move · left/right: change
+</pre></figure><figure class="shot"><figcaption>
+<div class="t">4. Выбор модели и режима прав</div>
+<div class="meta"><b>120×24</b> · tab, стрелки влево-вправо</div>
+<div class="look">понятно ли, что это перебор из закрытого набора, а не ввод</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Start a Claude Code session
+
+  host:  local
+  dir:   /home/dev/lab/typo
+› model: sonnet
+  mode:  acceptEdits
+  where: a new window
+
+enter: create · esc: cancel · ctrl+u: clear · tab/shift+tab: move · left/right: change
+
+</pre></figure></section><section id="s4"><h2>5. Рестарт и убийство</h2><p class="intro">Разрушающее действие всегда подтверждается, и подтверждение называет, что именно погибнет. Рестарт идёт через --resume, поэтому разговор не теряется.</p><figure class="shot"><figcaption>
+<div class="t">1. K по живому агенту</div>
+<div class="meta"><b>120×24</b> · выбрал панель с агентом, нажал K</div>
+<div class="look">названа ли ЖЕРТВА и сказано ли, что в ней работает агент</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+ ◆ · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  Reading internal/tmux/batch.go…                                     │
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 1 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Confirm kill to 1 target:
+    local %1 (fix claude)
+  • this pane is running an identified agent
+enter: kill anyway  ·  any other key: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. K по мёртвой панели</div>
+<div class="meta"><b>120×24</b> · агент вышел с кодом 7, нажал K</div>
+<div class="look">та же привычка подтверждения — но без намёка, что рискую работой</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+&gt;◆ ✗ exited 7 %1   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│Pane is dead (status 7, Wed Aug 12 13:21:15 2026)                     │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 1 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Confirm kill to 1 target:
+    local %1 (fix claude)
+  • this pane is dead (its command has exited)
+enter: kill anyway  ·  any other key: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Рестарт с непрерывностью</div>
+<div class="meta"><b>120×24</b> · нажал R</div>
+<div class="look">видно ли, что разговор продолжится, а не начнётся заново</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+   ✗ exited 7 %1   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+рестарт: claude --resume 7007b23f-1599-4efa-81c5-4195621cc273 · разговор сохранён · local up · nuc up</pre></figure></section><section id="s5"><h2>6. История и переотправка</h2><p class="intro">Каждая отправка записана с исходом. Переотправка целится в ТЕКУЩИЙ выбор, а не в панель из записи, поэтому спрашивает всегда.</p><figure class="shot"><figcaption>
+<div class="t">1. История отправок</div>
+<div class="meta"><b>120×24</b> · нажал h</div>
+<div class="look">различимы ли исходы: доехало, доехало но не подтверждено, отказано</div>
+</figcaption><pre>History (newest first)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+&gt;✓ 19:28:01 local      %1     прочитай §18 и скажи, где ключ держится на позиции
+ ~ 19:11:01 nuc        %5     перепроверь список вызовов
+ ✗ 18:44:01 local      %0     да
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+r: re-send  ·  j/k: move  ·  h/esc/q: leave</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Курсор на неподтверждённой</div>
+<div class="meta"><b>120×24</b> · j</div>
+<div class="look">видна ли причина, по которой исход не «доехало»</div>
+</figcaption><pre>History (newest first)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ✓ 19:28:01 local      %1     прочитай §18 и скажи, где ключ держится на позиции
+&gt;~ 19:11:01 nuc        %5     перепроверь список вызовов
+ ✗ 18:44:01 local      %0     да
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+r: re-send  ·  j/k: move  ·  h/esc/q: leave</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Переотправка всегда спрашивает</div>
+<div class="meta"><b>120×24</b> · r на записи</div>
+<div class="look">сказано ли, что текст пришёл из истории, а не набран сейчас</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+ ◆ · works  %1   claude
+   · works  %2   make
+
+
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  Reading internal/tmux/batch.go…                                     │
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 1 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Confirm send to 1 target:
+    local %1
+  │ перепроверь список вызовов
+  • this came from the history view rather than the input box
+enter: send anyway  ·  any other key: cancel</pre></figure></section><section id="s6"><h2>7. Деградация и края</h2><p class="intro">Состояния, в которых интерфейс обязан оставаться честным: упавший хост, хост только для чтения, мёртвые панели, пустой список, тесное окно.</p><figure class="shot"><figcaption>
+<div class="t">1. Хост упал</div>
+<div class="meta"><b>120×24</b> · ssh-форвард умер</div>
+<div class="look">остались ли его панели в списке помеченными, вместо тихого исчезновения; названа ли причина</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ stale  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · stale  %5   claude
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc down (dial /run/user/1000/nuc.sock: connect: connection refused)</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Удалённый хост только для чтения</div>
+<div class="meta"><b>120×24</b> · выбрал панель на хосте без ssh=</div>
+<div class="look">честно ли сказано, ЧТО именно нельзя и почему</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+&gt;  · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+
+
+┌─ local api %2 ───────────────────────────────────────────────────────┐
+│  ok  internal/tmux  6.4s                                             │
+└──────────────────────────────────────────────────────────────────────┘
+хост nuc без ssh= — читать можно, attach и проверку каталога нельзя · local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Мёртвые панели с кодом выхода</div>
+<div class="meta"><b>120×24</b> · два агента вышли: один с 7, другой с 0</div>
+<div class="look">различимы ли «упал» и «закончил»; читается ли exited 0 как отказ</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✗ exited 7 %4   claude
+   ✗ exited 0 %5   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+   · works  %2   make
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">4. i без выбора</div>
+<div class="meta"><b>120×24</b> · нажал i, ничего не выбрав</div>
+<div class="look">несёт ли отказ исправление, а не только «нельзя»</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+select a pane with space first — a prompt needs a target · local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">5. Ни одной панели</div>
+<div class="meta"><b>120×24</b> · tmux запущен, но пуст</div>
+<div class="look">понятно ли, что делать; не выглядит ли как поломка</div>
+</figcaption><pre>tmux-hub  0 sessions
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">6. Слишком узкий терминал</div>
+<div class="meta"><b>40×6</b> · сжал окно до 40×6</div>
+<div class="look">деградирует честно или ломается</div>
+</figcaption><pre>tmux-hub  6 sessions
+&gt;  ⚑ needs  claude   local/api %0
+   ✱ quiet  claude   nuc/deploy %4
+   ▸ idle   tail     local/ops
+   · works  claude   local/api %1
+local up · nuc up</pre></figure></section><section id="s7"><h2>8. Первая отрисовка и статусы хостов</h2><p class="intro">§16 обещает работоспособный дашборд до любой сетевой работы: локальный сокет отвечает за 2 мс, десять ssh-хостов конкурентно — 7.65 с. Ни одного экрана на это обещание не было, как и на три статуса из пяти.</p><figure class="shot"><figcaption>
+<div class="t">1. Первая отрисовка: локальное уже есть, nuc ещё едет</div>
+<div class="meta"><b>120×24</b> · хаб запущен секунду назад; локальный сокет ответил за 2 мс, ssh-проба ещё идёт</div>
+<div class="look">можно ли работать ПРЯМО СЕЙЧАС, не дожидаясь сети; видно ли, что nuc не упал, а именно подключается — и не выглядит ли это как поломка</div>
+</figcaption><pre>tmux-hub  2 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+   · works  %1   claude
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc connecting</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Все пять статусов хоста в одной строке</div>
+<div class="meta"><b>120×24</b> · пять хостов в разных состояниях: up, connecting, up-empty, degraded:format, down</div>
+<div class="look">каждый ли статус — ПОЛОЖИТЕЛЬНОЕ утверждение с причиной, а не отсутствие ошибки; влезают ли пять хостов в 120 колонок и что обрезается первым</div>
+</figcaption><pre>tmux-hub  2 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+   · works  %1   claude
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc connecting · st up-empty · old degraded:format (window_activity came back empty on this host) · dead down</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Те же пять на 80 колонках</div>
+<div class="meta"><b>80×24</b> · тот же список в терминале, который держим по §16</div>
+<div class="look">что остаётся от причин отказа, когда ширины нет</div>
+</figcaption><pre>tmux-hub  2 sessions
+&gt;  ⚑ needs  claude   local/api %0
+   · works  claude   local/api %1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc connecting · st up-empty · old degraded:format · dead down</pre></figure></section><section id="s8"><h2>9. Все причины подтверждения</h2><p class="intro">Разрушающее и неоднозначное всегда подтверждается, и подтверждение называет причину. Причин десять; экран был у четырёх. Шесть ниже не показывались никогда — а §12 помнит, как четыре причины из семи были недостижимы в продукте и это было невидимо, потому что отказывало в безопасную сторону.</p><figure class="shot"><figcaption>
+<div class="t">1. Панель не опознана как агент</div>
+<div class="meta"><b>120×24</b> · enter в ящике ввода</div>
+<div class="look">сказано ли, что именно неизвестно, и что делать</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+ ◆ · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  Reading internal/tmux/batch.go…                                     │
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 1 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Confirm send to 1 target:
+    local %1
+  • this pane cannot be identified as an agent
+enter: send anyway  ·  any other key: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Агент вышел, панель осталась</div>
+<div class="meta"><b>120×24</b> · enter в ящике ввода</div>
+<div class="look">различимо ли это от «панель мертва» — здесь панель жива, а агента в ней нет</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+ ◆ · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  Reading internal/tmux/batch.go…                                     │
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 1 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Confirm send to 1 target:
+    local %1
+  • the agent that was here has exited — this pane is now a shell
+enter: send anyway  ·  any other key: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Панель сменила сессию или окно</div>
+<div class="meta"><b>120×24</b> · enter в ящике ввода</div>
+<div class="look">понятно ли, что цель уехала ПОСЛЕ выбора, и что подтверждение относится к новому месту</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+ ◆ · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  Reading internal/tmux/batch.go…                                     │
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 1 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Confirm send to 1 target:
+    local %1
+  • this pane changed session or window since you selected it
+enter: send anyway  ·  any other key: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">4. tmux-сервер перезапустился</div>
+<div class="meta"><b>120×24</b> · enter в ящике ввода</div>
+<div class="look">названа ли причина, по которой id панелей больше ничего не значат</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+ ◆ · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  Reading internal/tmux/batch.go…                                     │
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 1 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Confirm send to 1 target:
+    local %1
+  • the tmux server restarted, so pane ids may name different panes
+enter: send anyway  ·  any other key: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">5. Прошлая отправка не подтвердилась экраном</div>
+<div class="meta"><b>120×24</b> · enter в ящике ввода</div>
+<div class="look">видно ли, что это про ПРОШЛУЮ отправку, а не про эту</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+ ◆ · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  Reading internal/tmux/batch.go…                                     │
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 1 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Confirm send to 1 target:
+    local %1
+  • the previous send to this pane was never witnessed arriving
+enter: send anyway  ·  any other key: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">6. Панель не принимает вставку</div>
+<div class="meta"><b>120×24</b> · enter в ящике ввода</div>
+<div class="look">сказано ли, чем это грозит — текст уйдёт как нажатия клавиш</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+ ◆ · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  Reading internal/tmux/batch.go…                                     │
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 1 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Confirm send to 1 target:
+    local %1
+  • this pane does not accept pasted text — it will read the prompt as keypresses
+enter: send anyway  ·  any other key: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">7. Семь причин сразу — сколько влезает</div>
+<div class="meta"><b>120×24</b> · две цели, у каждой свои сомнения</div>
+<div class="look">§14 записал, что тело диалога дорастает до ~21 строки и обрезается снизу, унося причины, пока enter всё ещё отправляет. Видно ли это здесь</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+
+┌─ local api %1 ───────────────────────────────────────────────────────┐
+│  esc to interrupt                                                    │
+└──────────────────────────────────────────────────────────────────────┘
+┌─ nuc deploy %5 ──────────────────────────────────────────────────────┐
+│  Grepping for call sites…                                            │
+local up · nuc up · → 2 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Confirm send to 2 targets:
+    local %1
+    nuc %5
+  • more than one target is selected
+  • this pane cannot be identified as an agent
+  • this pane changed session or window since you selected it
+  • the tmux server restarted, so pane ids may name different panes
+  • the previous send to this pane was never witnessed arriving
+  • this pane does not accept pasted text — it will read the prompt as keypresses
+  • the agent that was here has exited — this pane is now a shell
+enter: send anyway  ·  any other key: cancel</pre></figure></section><section id="s9"><h2>10. Тридцать панелей на 24 строках</h2><p class="intro">Прокрутка списка — исправленный дефект §16: без неё j за нижнюю границу двигал курсор, которого не видно. Экрана на это не было ни до, ни после починки.</p><figure class="shot"><figcaption>
+<div class="t">1. Тридцать панелей, курсор в начале</div>
+<div class="meta"><b>120×24</b> · хост накопил тридцать панелей</div>
+<div class="look">видно ли, сколько всего, и что список не влезает</div>
+</figcaption><pre>tmux-hub  30 sessions
+NUC DEPLOY
+&gt;  ⚑ needs  %22  claude
+LOCAL API
+   ✱ quiet  %12  claude
+   ✱ quiet  %2   claude
+   ✱ quiet  %7   claude
+NUC DEPLOY  (cont.)
+   ✱ quiet  %17  claude
+   ✱ quiet  %27  claude
+LOCAL API  (cont.)
+   ▸ idle   %13  claude
+   ▸ idle   %3   claude
+   ▸ idle   %8   claude
+
+
+
+
+┌─ nuc deploy %22 ─────────────────────────────────────────────────────┐
+│  Overwrite internal/ui/render.go?                                    │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Курсор на 28-й строке — список прокручен</div>
+<div class="meta"><b>120×24</b> · двадцать семь раз j</div>
+<div class="look">виден ли курсор ВООБЩЕ (без прокрутки он ушёл бы за экран), и понятно ли, что выше есть строки</div>
+</figcaption><pre>tmux-hub  30 sessions
+LOCAL API
+   · works  %14  claude
+   · works  %4   claude
+   · works  %5   claude
+   · works  %6   claude
+   · works  %9   claude
+NUC DEPLOY
+   · works  %15  claude
+   · works  %16  claude
+   · works  %19  claude
+   · works  %20  claude
+   · works  %21  claude
+   · works  %24  claude
+&gt;  · works  %25  claude
+
+
+
+
+
+┌─ nuc deploy %25 ─────────────────────────────────────────────────────┐
+│  step 25 of 30…                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. То же на 80 колонках</div>
+<div class="meta"><b>80×24</b> · тот же курсор в узкой раскладке, где под плитку остаётся меньше строк</div>
+<div class="look">остаётся ли плитка сфокусированной панели, когда список забрал вертикаль</div>
+</figcaption><pre>tmux-hub  30 sessions
+   · works  claude   local/api %10
+   · works  claude   local/api %11
+   · works  claude   local/api %14
+   · works  claude   local/api %4
+   · works  claude   local/api %5
+   · works  claude   local/api %6
+   · works  claude   local/api %9
+   · works  claude   nuc/deploy %15
+   · works  claude   nuc/deploy %16
+   · works  claude   nuc/deploy %19
+   · works  claude   nuc/deploy %20
+   · works  claude   nuc/deploy %21
+   · works  claude   nuc/deploy %24
+&gt;  · works  claude   nuc/deploy %25
+
+
+
+
+
+┌─ nuc deploy %25 ─────────────────────────────────────────────────────┐
+│  step 25 of 30…                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure></section><section id="s10"><h2>11. Хаб внутри tmux — то, что видно всегда</h2><p class="intro">Хаб почти всегда запущен из панели tmux, и тогда шапка несёт путезависимую подсказку: для прыжка на своём сервере возврат это C-b L, для окна с attach — C-b C-b d. Ни один из экранов выше её не показывал, потому что генератор по умолчанию работает вне tmux.</p><figure class="shot"><figcaption>
+<div class="t">1. Курсор на панели своего сервера — 120 колонок</div>
+<div class="meta"><b>120×24</b> · обычная работа: хаб в своём окне tmux, курсор на локальном агенте</div>
+<div class="look">говорит ли шапка, что сделает a и чем вернуться, не отнимая места у списка</div>
+</figcaption><pre>tmux-hub  6 sessions   · a → jump into the pane, C-b L comes back
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Курсор на панели другого сервера</div>
+<div class="meta"><b>120×24</b> · j до строки nuc/deploy</div>
+<div class="look">заметно ли, что подсказка сменилась, и не читается ли это как мусор в шапке</div>
+</figcaption><pre>tmux-hub  6 sessions   · a → a window with the attach, C-b C-b d leaves the inner tmux
+LOCAL API
+   ⚑ needs  %0   claude
+NUC DEPLOY
+&gt;  ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+
+┌─ nuc deploy %4 ──────────────────────────────────────────────────────┐
+│  Applied 3 migrations.                                               │
+│  ❯                                                                   │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. То же на 80×24 — размер, который держим</div>
+<div class="meta"><b>80×24</b> · тот же курсор в live1</div>
+<div class="look">остаётся ли подсказка читаемой, когда её длина сравнима с шириной; что обрезается — она или счётчик сессий</div>
+</figcaption><pre>tmux-hub  6 sessions   · a → jump into the pane, C-b L comes back
+&gt;  ⚑ needs  claude   local/api %0
+   ✱ quiet  claude   nuc/deploy %4
+   ▸ idle   tail     local/ops
+   · works  claude   local/api %1
+   · works  make     local/api %2
+   · works  claude   nuc/deploy %5
+
+
+
+
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">4. Подсказка оконного пути на 80 колонках — она не влезает</div>
+<div class="meta"><b>80×24</b> · курсор на nuc/deploy в live1. Полная строка 86 рун при ширине 80</div>
+<div class="look">обрезается посреди слова («leaves the inne»), но клавиша — единственное, что нужно нажать — уцелела. Достаточно ли этого, или подсказку надо укоротить до размера, который держим</div>
+</figcaption><pre>tmux-hub  6 sessions
+   ⚑ needs  claude   local/api %0
+&gt;  ✱ quiet  claude   nuc/deploy %4
+   ▸ idle   tail     local/ops
+   · works  claude   local/api %1
+   · works  make     local/api %2
+   · works  claude   nuc/deploy %5
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ nuc deploy %4 ──────────────────────────────────────────────────────┐
+│  Applied 3 migrations.                                               │
+│  ❯                                                                   │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">5. Для сравнения: тот же экран снаружи tmux</div>
+<div class="meta"><b>120×24</b> · хаб запущен из обычного терминала</div>
+<div class="look">исчезает ли подсказка целиком (должна: отцеплять нечего) и возвращается ли строка списку</div>
+</figcaption><pre>tmux-hub  6 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+NUC DEPLOY
+   ✱ quiet  %4   claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   local/ops  tail
+LOCAL API  (cont.)
+   · works  %1   claude
+   · works  %2   make
+NUC DEPLOY  (cont.)
+   · works  %5   claude
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure></section><section id="s11"><h2>12. Выбор хостов — первый запуск</h2><p class="intro">Экран, который человек встречает первым: кандидаты из ~/.ssh/config, что ответил каждый, и галочка у тех, кого можно взять. Он же всегда доступен по p. Пробы у него ТРИ исхода, а не два: хост, ответивший версией; хост, не ответивший вовремя — он медленный, а не отсутствующий, и галочку сохраняет; и хост, ответивший чем-то другим — у такого галочки нет, потому что завтра ответ будет тем же. Хосты здесь — те же двадцать кандидатов той же ФОРМЫ, что в утверждённом целевом кадре, но имена выдуманы: docs/ раздаётся публично живым Caddy, поэтому кадр публикуется в момент записи, и настоящих хостов этой машины здесь быть не должно. Реальны только строки причин — это слова самой программы.</p><figure class="shot"><figcaption>
+<div class="t">1. Ничего ещё не решено — первый запуск, 110×40</div>
+<div class="meta"><b>110×40</b> · hosts.toml нет, хаб сам открыл экран и опросил всех кандидатов</div>
+<div class="look">понятно ли без подсказки, что делать: у каждого исключённого хоста есть причина И средство, у пригодных галочка уже стоит. Сзади дашборд — только локальный сервер, и его панели УЖЕ на экране, пока проба ещё идёт (§16).</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>Hosts — 20 candidates in ~/.ssh/config, 5 answer with tmux</code>, <code>› [x] nuc           tmux 3.2a</code>, <code>  [x] office-nas    tmux 3.2a</code>, <code>      github.com    not a shell host — this is a git remote, so leave it off</code>, <code>      build-01      no tmux — install it there, or leave this host off</code>, <code>space: keep this host · enter: save and connect · esc: cancel · r: probe again</code>, <code>tmux-hub  2 sessions</code>, <code>&gt;  ⚑ needs  %0   claude</code>, не содержит <code>[x] github.com</code>, не содержит <code>[ ] github.com</code>, не содержит <code>[x] build-01</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+   · works  %1   claude
+
+
+
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Hosts — 20 candidates in ~/.ssh/config, 5 answer with tmux
+
+› [x] nuc           tmux 3.2a
+  [x] staging-2     tmux 3.2a
+  [x] lab-nuc       tmux 3.2a
+      build-01      no tmux — install it there, or leave this host off
+      github.com    not a shell host — this is a git remote, so leave it off
+  [x] dev-box       tmux 3.4
+  [x] office-nas    tmux 3.2a
+      stale07       DNS does not resolve — a stale ssh config entry? fix or remove it
+      stale08       DNS does not resolve — a stale ssh config entry? fix or remove it
+      stale09       DNS does not resolve — a stale ssh config entry? fix or remove it
+      stale10       DNS does not resolve — a stale ssh config entry? fix or remove it
+      stale11       DNS does not resolve — a stale ssh config entry? fix or remove it
+      stale12       DNS does not resolve — a stale ssh config entry? fix or remove it
+      stale13       DNS does not resolve — a stale ssh config entry? fix or remove it
+  ↓ 6 more · j/k to move
+
+space: keep this host · enter: save and connect · esc: cancel · r: probe again</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Смешанный парк — файл уже решил, а проба теперь спорит, 120×24</div>
+<div class="meta"><b>120×24</b> · нажал p на работающем дашборде. staging-2 в этот раз не ответил, build-01 потерял tmux</div>
+<div class="look">различимы ли четыре разных состояния строки: взят и отвечает, взят и всего лишь МЕДЛЕННЫЙ (галочка остаётся, рядом время последнего вопроса), взят и теперь непригоден ([!], но выключить его всё ещё можно), взят и выключен.</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>Hosts — 20 candidates in ~/.ssh/config, 4 answer with tmux, 1 timed out</code>, <code>› [x] nuc           tmux 3.2a</code>, <code>  [x] staging-2     no answer in 10s — this host is slow rather than absent;</code>, <code>(asked 09:41:07)</code>, <code>  [ ] lab-nuc       tmux 3.2a</code>, <code>  [!] build-01      no tmux — install it there, or leave this host off</code>, не содержит <code>[ ] github.com</code>, не содержит <code>[x] github.com</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+&gt;  ⚑ needs  local/api
+   ✱ quiet  nuc/deploy
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Hosts — 20 candidates in ~/.ssh/config, 4 answer with tmux, 1 timed out
+
+› [x] nuc           tmux 3.2a
+  [x] staging-2     no answer in 10s — this host is slow rather than absent; enable it anyway, or raise --probe-timeout
+                    (asked 09:41:07)
+  [ ] lab-nuc       tmux 3.2a
+  [!] build-01      no tmux — install it there, or leave this host off
+      github.com    not a shell host — this is a git remote, so leave it off
+  ↓ 15 more · j/k to move
+
+space: keep this host · enter: save and connect · esc: cancel · r: probe again</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. То же на 80 колонках — размер, который держим</div>
+<div class="meta"><b>80×24</b> · курсор доведён до build-01, чтобы спорная строка была на экране</div>
+<div class="look">уцелевает ли СРЕДСТВО, а не только жалоба, когда причина шире колонки: «raise --probe-timeout» — единственное, что тут можно нажать, и перенос идёт по словам, а не обрезанием.</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>                    enable it anyway, or raise --probe-timeout (asked 09:41:07)</code>, <code>› [!] build-01      no tmux — install it there, or leave this host off</code>, не содержит <code>absent; ena</code>, не содержит <code>[ ] github.com</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+&gt;  ⚑ needs  claude   local/api
+   ✱ quiet  claude   nuc/deploy
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────
+Hosts — 20 candidates in ~/.ssh/config, 4 answer with tmux, 1 timed out
+
+  [x] nuc           tmux 3.2a
+  [x] staging-2     no answer in 10s — this host is slow rather than absent;
+                    enable it anyway, or raise --probe-timeout (asked 09:41:07)
+  [ ] lab-nuc       tmux 3.2a
+› [!] build-01      no tmux — install it there, or leave this host off
+      github.com    not a shell host — this is a git remote, so leave it off
+  ↓ 15 more · j/k to move
+
+space: keep this host · enter: save and connect · esc: cancel · r: probe again</pre></figure><figure class="shot"><figcaption>
+<div class="t">4. Ни один хост не подходит</div>
+<div class="meta"><b>120×24</b> · проба ответила по каждому кандидату, и ни один не назвал версию tmux</div>
+<div class="look">читается ли это как названное состояние, а не как сломанный экран: счётчик говорит «0 answer with tmux», у каждой строки причина со средством, галочки нет ни у кого, r и esc работают.</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>Hosts — 15 candidates in ~/.ssh/config, 0 answer with tmux</code>, <code>      github.com    not a shell host — this is a git remote, so leave it off</code>, <code>space: keep this host · enter: save and connect · esc: cancel · r: probe again</code>, не содержит <code>[x]</code>, не содержит <code>[ ]</code>, не содержит <code>[!]</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+   · works  %1   claude
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Hosts — 15 candidates in ~/.ssh/config, 0 answer with tmux
+
+›     build-01      no tmux — install it there, or leave this host off
+      github.com    not a shell host — this is a git remote, so leave it off
+      stale07       DNS does not resolve — a stale ssh config entry? fix or remove it
+      stale08       DNS does not resolve — a stale ssh config entry? fix or remove it
+      stale09       DNS does not resolve — a stale ssh config entry? fix or remove it
+      stale10       DNS does not resolve — a stale ssh config entry? fix or remove it
+  ↓ 9 more · j/k to move
+
+space: keep this host · enter: save and connect · esc: cancel · r: probe again</pre></figure><figure class="shot"><figcaption>
+<div class="t">5. Показывать пока нечего</div>
+<div class="meta"><b>120×24</b> · ~/.ssh/config нет вообще — кандидатов ноль</div>
+<div class="look">пустое состояние — это экран, а не пустая рамка: строка говорит, что именно сделает r.</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>Hosts — nothing to show yet; r asks every candidate in ~/.ssh/config</code>, <code>space: keep this host · enter: save and connect · esc: cancel · r: probe again</code>, не содержит <code>[x]</code>, не содержит <code>[ ]</code>, не содержит <code>[!]</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+   · works  %1   claude
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Hosts — nothing to show yet; r asks every candidate in ~/.ssh/config
+
+
+
+
+
+
+
+
+
+space: keep this host · enter: save and connect · esc: cancel · r: probe again</pre></figure></section><section id="s12"><h2>13. Имя сессии — N</h2><p class="intro">Оверлей ровно в шесть строк у подвала: разделитель, субъект, `now:`, поле, причина, клавиши. Всегда шесть, поэтому ничего под ним не съезжает, когда появляется отказ. Субъект — строка под курсором, снятая В МОМЕНТ нажатия: список пересортируется под пробой, и субъект, уехавший между открытием и enter, назвал бы не то, на что смотрели. Поле открывается ИМЕНЕМ ОПЕРАТОРА и никогда производным — иначе нетронутый enter вморозил бы в файл слово Claude или имя tmux-сессии. Двойники ловятся по всему парку, без учёта регистра, в момент записи и по ПЕРЕЧИТАННОМУ файлу: другой хаб мог занять имя, пока экран открыт.</p><figure class="shot"><figcaption>
+<div class="t">1. Открыли N на строке без имени</div>
+<div class="meta"><b>100×24</b> · нажал N</div>
+<div class="look">поле ПУСТОЕ, а `now:` говорит, чьё имя сейчас видно и откуда оно</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>name this session:</code>, <code>nuc</code>, <code>verify-the-dr-plan</code>, <code>not yours</code>, <code>Claude&#39;s own name</code>, <code>name: ▏</code>, <code>ctrl+u</code>, не содержит <code>name: verify</code>, не содержит <code>» verify-the-dr-plan</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+&gt;  ⚑ needs  nuc/verify-the-dr-plan
+   · works  staging-2/deploy  claude
+
+
+
+
+
+
+
+
+
+┌─ nuc verify-the-dr-plan ─────────────────────────────────────────────┐
+│state: needs                                                          │
+│kind:                                                                 │
+│id:    5a485bc4                                                       │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────
+name this session: nuc · verify-the-dr-plan  (session, no pane)
+now:  verify-the-dr-plan  (not yours — Claude&#39;s own name for the session)
+name: ▏
+
+enter: save  ·  ctrl+u then enter: remove the name  ·  esc: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. То же, когда имя уже есть</div>
+<div class="meta"><b>100×24</b> · нажал N на названной строке</div>
+<div class="look">поле открывается ИМЕНЕМ ОПЕРАТОРА, а не производным</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>name: план восстановления▏</code>, <code>now:</code>, <code>план восстановления</code>, не содержит <code>not yours</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+&gt;  ⚑ needs  nuc/» план восстановления
+   · works  staging-2/deploy  claude
+
+
+
+
+
+
+
+
+
+┌─ nuc » план восстановления ──────────────────────────────────────────┐
+│state: needs                                                          │
+│kind:                                                                 │
+│id:    5a485bc4                                                       │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────
+name this session: nuc · план восстановления  (session, no pane)
+now:  план восстановления  (yours)
+name: план восстановления▏
+
+enter: save  ·  ctrl+u then enter: remove the name  ·  esc: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Имя занято</div>
+<div class="meta"><b>100×24</b> · ввёл имя, которое уже есть у другой сессии, и нажал enter</div>
+<div class="look">отказ ВНУТРИ оверлея, и поле сохраняет набранное</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>already the name</code>, <code>name: План Восстановления▏</code>, не содержит <code>name: ▏</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+&gt;  ⚑ needs  nuc/» план восстановления
+   · works  staging-2/deploy  claude
+
+
+
+
+
+
+
+
+
+┌─ nuc » план восстановления ──────────────────────────────────────────┐
+│state: needs                                                          │
+│kind:                                                                 │
+│id:    5a485bc4                                                       │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────
+name this session: staging-2 · deploy
+now:  deploy  (not yours — the tmux session name)
+name: План Восстановления▏
+&#34;план восстановления&#34; is already the name of another session (/w/dr-plan) — two rows reading the sam
+enter: save  ·  ctrl+u then enter: remove the name  ·  esc: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">4. Снятие имени</div>
+<div class="meta"><b>100×24</b> · нажал N, затем ctrl+u</div>
+<div class="look">поле пусто, `now:` ещё показывает имя — в этом состоянии enter его снимает</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>name: ▏</code>, <code>now:</code>, <code>план восстановления</code>, <code>remove the name</code>, не содержит <code>not yours</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+&gt;  ⚑ needs  nuc/» план восстановления
+   · works  staging-2/deploy  claude
+
+
+
+
+
+
+
+
+
+┌─ nuc » план восстановления ──────────────────────────────────────────┐
+│state: needs                                                          │
+│kind:                                                                 │
+│id:    5a485bc4                                                       │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────
+name this session: nuc · план восстановления  (session, no pane)
+now:  план восстановления  (yours)
+name: ▏
+
+enter: save  ·  ctrl+u then enter: remove the name  ·  esc: cancel</pre></figure><figure class="shot"><figcaption>
+<div class="t">5. Дашборд после переименования</div>
+<div class="meta"><b>100×24</b> · нажал enter в оверлее</div>
+<div class="look">строка читается по имени оператора, и маркер говорит, что имя ЕГО</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>» план восстановления</code>, <code>deploy</code>, не содержит <code>» deploy</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+&gt;  ⚑ needs  nuc/» план восстановления
+   · works  staging-2/deploy  claude
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ nuc » план восстановления ──────────────────────────────────────────┐
+│state: needs                                                          │
+│kind:                                                                 │
+│id:    5a485bc4                                                       │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure></section><section id="s13"><h2>14. Ширина, обрезка и проектный вид</h2><p class="intro">Четыре правки, каждая по кадрам живого хаба: помеченная обрезка там, где строка кончается не сама; проектный вид, который на 80 колонках раньше менял одно слово в шапке; плитка панели без захвата; и счёт в списке проектов, читавшийся как половина фразы.</p><figure class="shot"><figcaption>
+<div class="t">1. Имя длиннее строки — обрезка теперь помечена</div>
+<div class="meta"><b>80×24</b> · флот, где сессия названа промптом</div>
+<div class="look">видно ли, что имя продолжается, а не кончилось</div>
+</figcaption><pre>tmux-hub  4 sessions
+&gt;  ⚑ needs  claude   local/20260803--store-online-takes-too-long-to-ci-cd-troub…
+   ✱ quiet  claude   nuc/20260817-cicd
+   ▸ idle   sleep    local/scratch
+   · works  claude   local/20260809--рендеринг-карты-и-офлайн-тайлы
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ local 20260803--store-online-takes-too-long-to-ci-cd-troubleshootin…┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Тот же экран по проектам, 80 колонок</div>
+<div class="meta"><b>80×24</b> · нажал v</div>
+<div class="look">отвечает ли вид на свой же вопрос — под каким проектом эта строка</div>
+</figcaption><pre>tmux-hub  4 sessions   · per-project
+BILLING-IAC
+&gt;  ⚑ needs  20260803--store-online-takes-too-long-to-ci-cd-troubleshooting
+RENDER-MAP @NUC
+   ✱ quiet  20260817-cicd
+RENDER-MAP @LOCAL
+   ▸ idle        sleep
+BILLING-IAC  (cont.)
+   · works  20260809--рендеринг-карты-и-офлайн-тайлы
+
+
+
+
+
+
+
+
+
+┌─ local 20260803--store-online-takes-too-long-to-ci-cd-troubleshootin…┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Двести колонок — что даёт лишняя ширина</div>
+<div class="meta"><b>200×50</b> · тот же флот</div>
+<div class="look">куда уходит ширина и обрезан ли заголовок плитки</div>
+</figcaption><pre>tmux-hub  4 sessions
+&gt;  ⚑ needs  local/20260803--store-online-takes-too-long-to-ci-cd-troubleshooting
+   ✱ quiet  nuc/20260817-cicd
+   ▸ idle   local/scratch  sleep
+   · works  local/20260809--рендеринг-карты-и-офлайн-тайлы
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ local 20260803--store-online-takes-too-long-to-ci-cd-troubleshootin…┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">4. Плитка панели, у которой нечего показать</div>
+<div class="meta"><b>80×24</b> · курсор на панели без захвата</div>
+<div class="look">несёт ли рамка что-нибудь, чего нет в самой строке</div>
+</figcaption><pre>tmux-hub  4 sessions
+   ⚑ needs  claude   local/20260803--store-online-takes-too-long-to-ci-cd-troub…
+   ✱ quiet  claude   nuc/20260817-cicd
+&gt;  ▸ idle   sleep    local/scratch
+   · works  claude   local/20260809--рендеринг-карты-и-офлайн-тайлы
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ local scratch %7 ───────────────────────────────────────────────────┐
+│path:   /w/render-map                                                 │
+│window: 0 shell                                                       │
+│size:   120x40                                                        │
+│running: sleep                                                        │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">5. Поле поиска: что слово уже сделало</div>
+<div class="meta"><b>80×24</b> · нажал / и печатает</div>
+<div class="look">видно ли, сузилось ли до чего-то полезного, ещё до enter</div>
+</figcaption><pre>tmux-hub  1 session
+&gt;  · works  claude   local/20260809--рендеринг-карты-и-офлайн-тайлы
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ local 20260809--рендеринг-карты-и-офлайн-тайлы %1 ──────────────────┐
+│  Reading internal/tmux/batch.go…                                     │
+└──────────────────────────────────────────────────────────────────────┘
+search: рендеринг▏  ·  1 of 4 · enter: keep · esc: cancel · local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">7. Слово, которого нет ни в одном имени</div>
+<div class="meta"><b>80×24</b> · нажал / и набрал opssch</div>
+<div class="look">признаётся ли экран, что строки лишь ПОХОЖИ на набранное</div>
+</figcaption><pre>tmux-hub  2 sessions
+&gt;  ⚑ needs  nuc/20260701-ops-schdev3-envoy-access-logs--compact
+   ▸ idle   nuc/envoy-ops-svcdev4-ci-hotfix-branch-support
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ nuc 20260701-ops-schdev3-envoy-access-logs--compact ────────────────┐
+│  (no pane)                                                           │
+└──────────────────────────────────────────────────────────────────────┘
+search: opssch▏  ·  nothing contains it · 2 of 5 · enter: keep · esc: cancel +2</pre></figure><figure class="shot"><figcaption>
+<div class="t">6. Список проектов — счёт без фактов</div>
+<div class="meta"><b>80×24</b> · нажал P</div>
+<div class="look">читается ли счёт как фраза, когда сказать больше нечего</div>
+</figcaption><pre>3 projects  ·  enter narrows, esc goes back
+────────────────────────────────────────────────────────────────────────────────
+❯  billing-iac                                                  ⚑ 1  of 2
+   render-map @nuc                                              none  of 1
+   render-map @local                                            none  of 1
+
+j/k: move  ·  enter: narrow  ·  f: pin  ·  a: go to what waits  ·  esc: back
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</pre></figure></section><section id="s14"><h2>15. Своё против чужого: заголовки, id панелей и окна хаба</h2><p class="intro">Оператор спросил три вещи про свой экран: что такое `%1`, почему хост виден дважды и что такое `LOCAL 0`. Ответ на все три — одно: список упорядочен по вниманию, а рисовался так, будто сгруппирован. Строка теперь называет свой хост, разрыв группы помечен, id панели показывается только там, где он что-то различает, а окна самого хаба вообще не строки флота.</p><figure class="shot"><figcaption>
+<div class="t">1. Заголовок больше не присваивает себе чужие строки</div>
+<div class="meta"><b>120×24</b> · флот, где одиночки падают внутрь чужой группы</div>
+<div class="look">понятно ли, где группа кончилась, и на каком хосте живёт каждая строка</div>
+</figcaption><pre>tmux-hub  12 sessions
+LOCAL PAIR0
+&gt;  ✱ quiet  %000 claude
+   ✱ quiet  %001 claude
+LOCAL PAIR1
+   ✱ quiet  %010 claude
+   ✱ quiet  %011 claude
+LOCAL PAIR2
+   ✱ quiet  %020 claude
+   ✱ quiet  %021 claude
+   ┄┄ other sessions ┄┄
+   ▸ idle   nuc/lone00a
+   ▸ idle   nuc/lone00b
+   ▸ idle   nuc/lone01a
+   ▸ idle   nuc/lone01b
+
+
+
+
+
+┌─ local pair0 %000 ───────────────────────────────────────────────────┐
+│a                                                                     │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Тот же флот на 80 колонках — заголовков нет вовсе</div>
+<div class="meta"><b>80×24</b> · та же выборка, узкая полоса</div>
+<div class="look">одна ли конвенция на обеих ширинах</div>
+</figcaption><pre>tmux-hub  12 sessions
+&gt;  ✱ quiet  claude   local/pair0 %000
+   ✱ quiet  claude   local/pair0 %001
+   ✱ quiet  claude   local/pair1 %010
+   ✱ quiet  claude   local/pair1 %011
+   ✱ quiet  claude   local/pair2 %020
+   ✱ quiet  claude   local/pair2 %021
+   ▸ idle   claude   nuc/lone00a
+   ▸ idle   claude   nuc/lone00b
+   ▸ idle   claude   nuc/lone01a
+   ▸ idle   claude   nuc/lone01b
+   ▸ idle   claude   nuc/lone02a
+   ▸ idle   claude   nuc/lone02b
+
+
+
+
+
+
+
+┌─ local pair0 %000 ───────────────────────────────────────────────────┐
+│a                                                                     │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Хаб перестал показывать сам себя и свои двери</div>
+<div class="meta"><b>120×24</b> · флот, где половина строк — окна самого хаба</div>
+<div class="look">сходится ли счёт сессий с тем, что скажет tmux ls</div>
+</figcaption><pre>tmux-hub  1 session   · 4 windows of its own not listed
+&gt;  ✱ quiet  nuc/tmux-hub-demo
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ nuc tmux-hub-demo %1 ───────────────────────────────────────────────┐
+│the session an attach shows                                           │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">4. Две строки с одним именем теперь различимы</div>
+<div class="meta"><b>120×24</b> · две claude-сессии, названные одинаково</div>
+<div class="look">видно ли, на какую из двух подействует `a`, не сходив в плитку</div>
+</figcaption><pre>tmux-hub  4 sessions
+&gt;  ⚑ needs  local/20260818--cicd  1b0cacf2
+   ⚑ needs  local/20260818--cicd  30f3382b
+   ✱ quiet  local/tmp
+   ▸ idle   local/20260818--cicd  a112a9b8
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ local 20260818--cicd ───────────────────────────────────────────────┐
+│  (no pane)                                                           │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">6. Закреплённые: имя впереди, потом адрес (80 колонок)</div>
+<div class="meta"><b>80×24</b> · три закреплённые строки и одна нет</div>
+<div class="look">уступает ли путь первым и цел ли последний сегмент</div>
+</figcaption><pre>tmux-hub  4 sessions
+&gt; ★⚑ needs  xmap-universal-reader @local:…s/experiments/xmap-reverse-engineering
+  ★⚑ needs  billing-cicd @local:~/lab/streams/orbits/billing-iac
+  ★· works  seedtool-development @local:~/lab/streams/st/st-edgebox
+   ✱ quiet  claude   nuc/envoy-ops-svcdev4-ci
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ local xmap-universal-reader %x ─────────────────────────────────────┐
+│  ❯                                                                   │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">7. Закреплённые: имя впереди, потом адрес (120 колонок)</div>
+<div class="meta"><b>120×24</b> · три закреплённые строки и одна нет</div>
+<div class="look">уступает ли путь первым и цел ли последний сегмент</div>
+</figcaption><pre>tmux-hub  4 sessions
+&gt; ★⚑ needs  xmap-universal-reader @local:~/lab/streams/experiments/xmap-reverse-engineering
+  ★⚑ needs  billing-cicd @local:~/lab/streams/orbits/billing-iac
+  ★· works  seedtool-development @local:~/lab/streams/st/st-edgebox
+   ✱ quiet  nuc/envoy-ops-svcdev4-ci
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ local xmap-universal-reader %x ─────────────────────────────────────┐
+│  ❯                                                                   │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure></section><section id="s15"><h2>16. Файловая система: тома, каталоги, сессии</h2><p class="intro">Хосты — тома, каталоги — каталоги, сессии — файлы. Сегодня «проект» это только последний сегмент пути, и вся иерархия выбрасывается: `st-edgebox`, `frontend` и `tundra-security-server` — три несвязанные метки, которые на самом деле одна семья `~/lab/streams/st`. Порядок внутри узла — по ВНИМАНИЮ, а не по алфавиту: это единственное решение против метафоры, и оно за то, ради чего экран существует. Узлы несут свёрнутый счётчик, поэтому закрытое дерево отвечает на «кто меня ждёт» в четыре строки. Первая отрисовка открывает КАРТУ (тома и ветви) и закрывает ПАПКИ (листья с сессиями) — это решение, которое делает экран пригодным как дефолтный (§23).</p><figure class="shot"><figcaption>
+<div class="t">1. Дерево, папки закрыты (80 колонок)</div>
+<div class="meta"><b>80×24</b> · нажал t</div>
+<div class="look">видна ли структура — тома, каталоги, закрытые папки со счётчиками</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>enter opens</code>, <code>esc leaves</code>, <code>▾ local/</code>, <code>▸ frontend/</code>, <code>▾ nuc/</code></div>
+</figcaption><pre>7 sessions · 4 asking · enter opens · esc leaves · a goes to what waits +3
+────────────────────────────────────────────────────────────────────────────────
+&gt; ▾ local/                                                      ⚑ 3  of 6
+    ▾ ~/lab/streams/                                            ⚑ 3  of 5
+      ▾ st/                                                     ⚑ 3  of 4
+        ▸ frontend/                                             ⚑ 2  of 2
+        ▸ st-edgebox/                                           ⚑ 1  of 2
+      ▸ experiments/tmux-hub/                                   none  of 1
+    ▸ idle   tmp-1e
+  ▾ nuc/                                                        ✗ 1  of 1
+    ▸ home/dev/lab/streams/qa/ansible/                          ✗ 1  of 1
+
+
+
+
+
+┌─ local (volume) ─────────────────────────────────────────────────────┐
+│ 6 sessions · 3 asking                                                │
+│ ⚑ needs  healthchecks                                                │
+│ ⚑ needs  store-online                                                │
+│ ⚑ needs  troubleshooting                                             │
+│ … and 3 more                                                         │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. Дерево, папки закрыты (120 колонок)</div>
+<div class="meta"><b>120×24</b> · нажал t</div>
+<div class="look">видна ли структура — тома, каталоги, закрытые папки со счётчиками</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>enter opens</code>, <code>esc leaves</code>, <code>▾ local/</code>, <code>▸ frontend/</code>, <code>▾ nuc/</code></div>
+</figcaption><pre>7 sessions · 4 asking · enter opens · esc leaves · a goes to what waits · n new session here · / finds · q quits
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+&gt; ▾ local/                                                                                              ⚑ 3  of 6
+    ▾ ~/lab/streams/                                                                                    ⚑ 3  of 5
+      ▾ st/                                                                                             ⚑ 3  of 4
+        ▸ frontend/                                                                                     ⚑ 2  of 2
+        ▸ st-edgebox/                                                                                   ⚑ 1  of 2
+      ▸ experiments/tmux-hub/                                                                           none  of 1
+    ▸ idle   tmp-1e
+  ▾ nuc/                                                                                                ✗ 1  of 1
+    ▸ home/dev/lab/streams/qa/ansible/                                                                  ✗ 1  of 1
+
+
+
+
+
+┌─ local (volume) ─────────────────────────────────────────────────────┐
+│ 6 sessions · 3 asking                                                │
+│ ⚑ needs  healthchecks                                                │
+│ ⚑ needs  store-online                                                │
+│ ⚑ needs  troubleshooting                                             │
+│ … and 3 more                                                         │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Дерево, папки закрыты (200 колонок)</div>
+<div class="meta"><b>200×24</b> · нажал t</div>
+<div class="look">видна ли структура — тома, каталоги, закрытые папки со счётчиками</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>enter opens</code>, <code>esc leaves</code>, <code>▾ local/</code>, <code>▸ frontend/</code>, <code>▾ nuc/</code></div>
+</figcaption><pre>7 sessions · 4 asking · enter opens · esc leaves · a goes to what waits · n new session here · / finds · q quits
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+&gt; ▾ local/                                                                                                                                                                              ⚑ 3  of 6
+    ▾ ~/lab/streams/                                                                                                                                                                    ⚑ 3  of 5
+      ▾ st/                                                                                                                                                                             ⚑ 3  of 4
+        ▸ frontend/                                                                                                                                                                     ⚑ 2  of 2
+        ▸ st-edgebox/                                                                                                                                                                   ⚑ 1  of 2
+      ▸ experiments/tmux-hub/                                                                                                                                                           none  of 1
+    ▸ idle   tmp-1e
+  ▾ nuc/                                                                                                                                                                                ✗ 1  of 1
+    ▸ home/dev/lab/streams/qa/ansible/                                                                                                                                                  ✗ 1  of 1
+
+
+
+
+
+┌─ local (volume) ─────────────────────────────────────────────────────┐
+│ 6 sessions · 3 asking                                                │
+│ ⚑ needs  healthchecks                                                │
+│ ⚑ needs  store-online                                                │
+│ ⚑ needs  troubleshooting                                             │
+│ … and 3 more                                                         │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">4. То же, раскрытое целиком</div>
+<div class="meta"><b>120×24</b> · нажал enter на каждом узле</div>
+<div class="look">видно ли, ГДЕ ждут — глифы состояния, имена сессий</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>⚑ needs  healthchecks</code>, <code>✓ done   main</code>, <code>▾ st-edgebox/</code></div>
+</figcaption><pre>7 sessions · 4 asking · enter opens · esc leaves · a goes to what waits · n new session here · / finds · q quits
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+&gt; ▾ local/                                                                                              ⚑ 3  of 6
+    ▾ ~/lab/streams/                                                                                    ⚑ 3  of 5
+      ▾ st/                                                                                             ⚑ 3  of 4
+        ▾ frontend/                                                                                     ⚑ 2  of 2
+          ⚑ needs  healthchecks
+          ⚑ needs  troubleshooting
+        ▾ st-edgebox/                                                                                   ⚑ 1  of 2
+          ⚑ needs  store-online
+          ✓ done   observability
+      ▾ experiments/tmux-hub/                                                                           none  of 1
+        ✓ done   main
+    ▸ idle   tmp-1e
+  ▾ nuc/                                                                                                ✗ 1  of 1
+
+┌─ local (volume) ─────────────────────────────────────────────────────┐
+│ 6 sessions · 3 asking                                                │
+│ ⚑ needs  healthchecks                                                │
+│ ⚑ needs  store-online                                                │
+│ ⚑ needs  troubleshooting                                             │
+│ … and 3 more                                                         │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">5. Закреплённые: своя полоса наверху</div>
+<div class="meta"><b>120×24</b> · нажал f на двух строках, потом t</div>
+<div class="look">видны ли закреплённые строки под FAVOURITES, и пропали ли они из каталогов — одна строка дважды это дубликат</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>▾ FAVOURITES</code>, <code>store-online @local:~/lab/streams/st/st-edgebox</code>, <code>▸ frontend/</code>, не содержит <code>          ⚑ needs  healthchecks</code></div>
+</figcaption><pre>7 sessions · 4 asking · enter opens · esc leaves · a goes to what waits · n new session here · / finds · q quits
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+&gt; ▾ FAVOURITES                                                                                          ⚑ 2  of 2
+    ⚑ needs  healthchecks @local:~/lab/streams/st/frontend
+    ⚑ needs  store-online @local:~/lab/streams/st/st-edgebox
+  ▾ local/                                                                                              ⚑ 1  of 4
+    ▾ ~/lab/streams/                                                                                    ⚑ 1  of 3
+      ▾ st/                                                                                             ⚑ 1  of 2
+        ▸ frontend/                                                                                     ⚑ 1  of 1
+        ▸ st-edgebox/                                                                                   none  of 1
+      ▸ experiments/tmux-hub/                                                                           none  of 1
+    ▸ idle   tmp-1e
+  ▾ nuc/                                                                                                ✗ 1  of 1
+    ▸ home/dev/lab/streams/qa/ansible/                                                                  ✗ 1  of 1
+
+
+┌─ FAVOURITES (what you pinned) ───────────────────────────────────────┐
+│ 2 sessions · 2 asking · f pins a session, and it moves here          │
+│ ⚑ needs  healthchecks                                                │
+│ ⚑ needs  store-online                                                │
+│                                                                      │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">6. Плитка каталога: адрес, счёт, сессии внутри</div>
+<div class="meta"><b>120×24</b> · курсор на узле каталога</div>
+<div class="look">видно ли, что внутри ЗАКРЫТОГО узла — это разрешение его закрыть. И цел ли путь, который форме запуска понадобится</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>┌─ local ~/lab/streams </code>, <code>5 sessions · 3 asking · /home/dev/lab/streams</code>, <code>⚑ needs  store-online</code></div>
+</figcaption><pre>7 sessions · 4 asking · enter opens · esc leaves · a goes to what waits · n new session here · / finds · q quits
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ▾ local/                                                                                              ⚑ 3  of 6
+&gt;   ▾ ~/lab/streams/                                                                                    ⚑ 3  of 5
+      ▾ st/                                                                                             ⚑ 3  of 4
+        ▸ frontend/                                                                                     ⚑ 2  of 2
+        ▸ st-edgebox/                                                                                   ⚑ 1  of 2
+      ▸ experiments/tmux-hub/                                                                           none  of 1
+    ▸ idle   tmp-1e
+  ▾ nuc/                                                                                                ✗ 1  of 1
+    ▸ home/dev/lab/streams/qa/ansible/                                                                  ✗ 1  of 1
+
+
+
+
+
+┌─ local ~/lab/streams ────────────────────────────────────────────────┐
+│ 5 sessions · 3 asking · /home/dev/lab/streams                        │
+│ ⚑ needs  healthchecks                                                │
+│ ⚑ needs  store-online                                                │
+│ ⚑ needs  troubleshooting                                             │
+│ … and 2 more                                                         │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up</pre></figure><figure class="shot"><figcaption>
+<div class="t">7. Ящик ввода над деревом</div>
+<div class="meta"><b>120×24</b> · выбрал строку, нажал i, печатал</div>
+<div class="look">видно ли дерево ПОД оверлеем — это backdrop, новое поведение Frame.Screen, и ни один экран выше его не показывал</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>прочитай docs/design.md</code>, <code>▾ frontend/</code>, <code>enter: send</code>, не содержит <code>tmux-hub  </code></div>
+</figcaption><pre>7 sessions · 4 asking · enter opens · esc leaves · a goes to what waits · n new session here · / finds · q quits
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ▾ local/                                                                                              ⚑ 3  of 6
+    ▾ ~/lab/streams/                                                                                    ⚑ 3  of 5
+      ▾ st/                                                                                             ⚑ 3  of 4
+        ▾ frontend/                                                                                     ⚑ 2  of 2
+&gt;         ⚑ needs  healthchecks
+          ⚑ needs  troubleshooting
+        ▾ st-edgebox/                                                                                   ⚑ 1  of 2
+          ⚑ needs  store-online
+          ✓ done   observability
+      ▾ experiments/tmux-hub/                                                                           none  of 1
+        ✓ done   main
+
+
+
+┌─ local healthchecks ─────────────────────────────────────────────────┐
+│  (no pane)                                                           │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up · → 1 marked
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+прочитай docs/design.md §23 и скажи, где правило про backdrop
+
+alt+enter: newline  ·  enter: send  ·  esc: keep draft and leave</pre></figure><figure class="shot"><figcaption>
+<div class="t">8. Форма запуска, открытая с узла каталога</div>
+<div class="meta"><b>120×24</b> · нажал n на каталоге</div>
+<div class="look">подставлен ли путь каталога, и видно ли дерево позади — это жест, ради которого метафору и спросили</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>Start a Claude Code session</code>, <code>host:  local</code>, <code>/home/dev/lab/streams</code>, <code>enter: create</code></div>
+</figcaption><pre>7 sessions · 4 asking · enter opens · esc leaves · a goes to what waits · n new session here · / finds · q quits
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ▾ local/                                                                                              ⚑ 3  of 6
+&gt;   ▾ ~/lab/streams/                                                                                    ⚑ 3  of 5
+      ▾ st/                                                                                             ⚑ 3  of 4
+
+┌─ local ~/lab/streams ────────────────────────────────────────────────┐
+│ 5 sessions · 3 asking · /home/dev/lab/streams                        │
+│ ⚑ needs  healthchecks                                                │
+│ … and 4 more                                                         │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Start a Claude Code session
+
+  host:  local
+› dir:   /home/dev/lab/streams
+  model: opus
+  mode:  default
+  where: a new window
+
+enter: create · esc: cancel · ctrl+u: clear · tab/shift+tab: move · left/right: change
+
+</pre></figure><figure class="shot"><figcaption>
+<div class="t">9. Поиск по ключевому слову</div>
+<div class="meta"><b>120×24</b> · нажал /, набрал frontend</div>
+<div class="look">сузился ли список, видно ли слово и счёт, несёт ли дерево структуру — плоский список был бы зря нарисован деревом</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>search: frontend</code>, <code>2 of 7</code>, <code>▸ ~/lab/streams/st/frontend/</code></div>
+</figcaption><pre>2 sessions · 2 asking · enter opens · esc leaves · a goes to what waits · n new session here · / finds · q quits
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+&gt; ▾ local/                                                                                              ⚑ 2  of 2
+    ▸ ~/lab/streams/st/frontend/                                                                        ⚑ 2  of 2
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ local (volume) ─────────────────────────────────────────────────────┐
+│ 2 sessions · 2 asking                                                │
+│ ⚑ needs  healthchecks                                                │
+│ ⚑ needs  troubleshooting                                             │
+│                                                                      │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+search: frontend▏  ·  2 of 7 · enter: keep · esc: cancel · local up · nuc up</pre></figure></section></main><footer>16 сценариев, 80 экранов.
+Пересобрать: <code>go test -tags mockup -run TestGenerateMockup ./internal/ui/</code>.
+Экраны ПРЕДЛОЖЕННОЙ функции живут отдельно и помечены покадрово:
+<a href="ui-flows-possession.html" style="color:#7aa2f7">§20 вселение — потоки</a>.
+Здесь их нет намеренно: макет с выдуманными экранами позволил бы одобрить раскладку,
+которой программа не выдаёт.
+Экраны без цвета намеренно: lipgloss не раскрашивает вывод без терминала, а перевод ANSI
+в CSS придумал бы оформление, которое потом пришлось бы оценивать как настоящее.</footer>
+</body></html>

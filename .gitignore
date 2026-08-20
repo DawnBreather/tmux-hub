@@ -1,0 +1,19 @@
+# Build output
+/tmux-hub
+/dist/
+
+# Test and coverage output
+*.out
+coverage.txt
+
+# Editor and OS
+.idea/
+.vscode/
+.DS_Store
+
+# Local environment
+.env
+.env.*
+
+# Core dumps
+core.*

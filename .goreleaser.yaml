@@ -1,0 +1,101 @@
+version: 2
+
+project_name: tmux-hub
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: tmux-hub
+    main: ./cmd/tmux-hub
+    binary: tmux-hub
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      # `main.version` is the only stamped symbol; without it a released binary reports `dev`
+      # and a bug report cannot say which build it came from.
+      - -s -w -X main.version={{ .Version }}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: tmux-hub
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{- if eq .Os "darwin" }}macos{{- else }}{{ .Os }}{{ end }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+      - docs/design.md
+      - docs/known-issues.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^test:"
+      - "^chore:"
+      - "^style:"
+
+release:
+  draft: false
+  prerelease: auto
+  footer: |
+    ## Install
+
+    macOS (Homebrew):
+
+        brew install DawnBreather/tap/tmux-hub
+
+    Linux and macOS (direct):
+
+        curl -sSfL https://github.com/DawnBreather/tmux-hub/releases/download/{{ .Tag }}/tmux-hub_{{ trimprefix .Tag "v" }}_linux_amd64.tar.gz | tar -xz tmux-hub
+
+    Requires `tmux` on any host you point it at.
+
+# A CASK rather than a formula: Homebrew's formula path is for building from source, and
+# `goreleaser check` refuses the deprecated `brews:` block. A cask is the supported route for a
+# pre-built binary, and `brew install DawnBreather/tap/tmux-hub` reaches it either way.
+homebrew_casks:
+  - name: tmux-hub
+    repository:
+      owner: DawnBreather
+      name: homebrew-tap
+      branch: main
+      # A cross-repository push needs a token of its own: the workflow's GITHUB_TOKEN is scoped
+      # to THIS repository and cannot write to the tap. The release job skips this block when
+      # the secret is absent, so a release still publishes its binaries without it.
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/DawnBreather/tmux-hub
+    description: A control panel over local and remote tmux servers, built for many Claude Code sessions at once
+    license: MIT
+    binaries:
+      - tmux-hub
+    dependencies:
+      - formula: tmux
+    hooks:
+      post:
+        # These binaries are not notarised, so macOS quarantines what the cask downloaded and the
+        # first run dies with "cannot be opened because the developer cannot be verified" — which
+        # reads as a broken build rather than as Gatekeeper. Clearing the attribute at install time
+        # is what makes `brew install` followed by `tmux-hub` work.
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr",
+                           args: ["-dr", "com.apple.quarantine", "#{staged_path}/tmux-hub"]
+          end

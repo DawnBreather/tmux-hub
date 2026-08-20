@@ -1,0 +1,6 @@
+● Ran 42 tests, 3 failed
+Do you want to proceed?
+  1. Yes
+  2. No, tell Claude what to do differently
+────────────────────────────────────────
+❯
