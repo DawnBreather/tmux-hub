@@ -272,3 +272,28 @@ func KeyOfNode(n fleet.Node) Key {
 	}
 	return Key{}
 }
+
+// KeysOfNode is EVERY key a node's remembered facts could be under, in the order to try them.
+//
+// It exists because `KeyOfNode` answers with the FIRST fingerprint and a node's fingerprint set
+// GROWS: two machines seen separately are two nodes with two keys, and one later observation carrying
+// both fingerprints merges them into one node whose key is the keeper's first. Everything remembered
+// under the absorbed fingerprint then becomes unreachable — measured, a node that had a 42 ms RTT and
+// `tmux 3.5a` under `SHA256:bbb` looked up `SHA256:aaa` after the merge and found nothing, so the row
+// fell back to `no timing` and re-sorted into a slower bucket than the machine deserves.
+//
+// The alternative was to MIGRATE the file's entries on merge, and this is better for a reason worth
+// stating: a migration has to happen at exactly the right moment in a process that may not be the one
+// holding the cache, while a reader that tries every key is correct whenever it runs and needs nobody
+// to have remembered anything. The write path is untouched — `Record` still keys on `KeyOfNode`, so a
+// merged node's next round writes one entry and the stale one ages out.
+func KeysOfNode(n fleet.Node) []Key {
+	if len(n.Fingerprints) == 0 {
+		return []Key{KeyOfNode(n)}
+	}
+	out := make([]Key, 0, len(n.Fingerprints))
+	for _, f := range n.Fingerprints {
+		out = append(out, Key{Fingerprint: f})
+	}
+	return out
+}

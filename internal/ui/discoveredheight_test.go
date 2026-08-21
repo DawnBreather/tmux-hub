@@ -2,8 +2,10 @@ package ui
 
 import (
 	"fmt"
+	"github.com/DawnBreather/tmux-hub/internal/fleetcache"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DawnBreather/tmux-hub/internal/fleet"
 	"github.com/DawnBreather/tmux-hub/internal/lines"
@@ -117,6 +119,60 @@ func TestAKnownTmuxVersionIsDrawnAndAnUnknownOneLeavesNoGap(t *testing.T) {
 	for _, l := range RenderDiscovered(rows, 60, 12) {
 		if lines.Width(l) > 60 {
 			t.Errorf("a version pushed a line to %d columns at width 60:\n%q", lines.Width(l), l)
+		}
+	}
+}
+
+// A MERGED NODE MUST KEEP WHAT IT REMEMBERS, and before this it did not: a node's fingerprint set
+// grows, so two machines seen separately are two nodes with two cache keys, and one later observation
+// carrying both fingerprints merges them into one node keyed on the KEEPER's first fingerprint.
+// Everything filed under the absorbed fingerprint became unreachable — the row lost its RTT, printed
+// `no timing`, and sorted into a slower bucket than the machine deserves.
+//
+// Found by an adversarial reviewer and reproduced before fixing: a node holding
+// {SHA256:aaa, SHA256:bbb} looked up `SHA256:aaa` alone and found nothing, though the facts were
+// there under `SHA256:bbb`.
+//
+// The fixture drives the REAL graph rather than hand-building a node, because the whole defect is a
+// property of what `Observe` does to a fingerprint set when it merges — a hand-built node is the one
+// shape that cannot show it.
+func TestAMergedMachineKeepsTheTimingItWasRememberedUnder(t *testing.T) {
+	g := &fleet.Graph{}
+	g.Observe(fleet.Observation{Label: "one", Verified: true, Fingerprints: []string{"SHA256:aaa"}})
+	g.Observe(fleet.Observation{Label: "two", Observer: "hop", Verified: true,
+		Fingerprints: []string{"SHA256:bbb"}})
+	// One machine all along: an observation that sees both keys at once.
+	g.Observe(fleet.Observation{Label: "one", Verified: true,
+		Fingerprints: []string{"SHA256:aaa", "SHA256:bbb"}})
+
+	nodes := g.Nodes()
+	if len(nodes) != 1 {
+		t.Fatalf("the fixture did not merge: %d nodes, want 1 — without a merge this case cannot "+
+			"see the defect at all", len(nodes))
+	}
+
+	// Remembered under the ABSORBED fingerprint, which is where a real cache would have filed it
+	// when that machine was a node of its own.
+	remembered := map[fleetcache.Key]fleetcache.Facts{
+		{Fingerprint: "SHA256:bbb"}: {RTT: 42 * time.Millisecond, TmuxVersion: "3.5a"},
+	}
+	look := func(k fleetcache.Key) (fleetcache.Facts, bool) {
+		f, ok := remembered[k]
+		return f, ok
+	}
+
+	rows := DiscoveredRowsFor(nodes, nil, look)
+	if len(rows) == 0 {
+		t.Fatal("no row for a merged node that a hop declares")
+	}
+	for _, r := range rows {
+		if !r.Timed {
+			t.Errorf("%s reads as never timed, though the merged node's other fingerprint carries a "+
+				"42ms measurement", r.Label)
+		}
+		if r.RTT != 42*time.Millisecond {
+			t.Errorf("%s carries RTT %v, want 42ms — the memory was filed under the fingerprint the "+
+				"merge absorbed", r.Label, r.RTT)
 		}
 	}
 }

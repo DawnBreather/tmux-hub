@@ -241,3 +241,44 @@ func TestOnlyTheCandidateSentenceReadsTheObserver(t *testing.T) {
 		}
 	}
 }
+
+// A NEGATIVE breadth used to CRASH, and an exported function that takes a plain int must not: found
+// by an adversarial reviewer, reproduced as `labels[:-1]` — a slice-bounds panic, not a refusal.
+//
+// Zero is the pole that matters beside it, because this package's zero value is deliberately the
+// least-privileged one ("nothing is allowed", so an unfilled Budget cannot open a crawl). A negative
+// therefore clamps to zero rather than to one: it must behave like the most restrictive setting, not
+// like a slightly smaller one, and the cut it files must still name what was lost.
+func TestANonsensicalBreadthIsRefusedRatherThanCrashing(t *testing.T) {
+	for _, breadth := range []int{-1, 0, -99} {
+		g := &Graph{}
+		var got []string
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("MaxPerObserver=%d panicked: %v", breadth, r)
+				}
+			}()
+			got = g.Allow(Budget{MaxDepth: 1, MaxPerObserver: breadth}, "hop", 0, []string{"leaf", "twin"})
+		}()
+		if len(got) != 0 {
+			t.Errorf("MaxPerObserver=%d allowed %v, want nothing at all", breadth, got)
+		}
+		cuts := g.Cuts()
+		if len(cuts) != 1 {
+			t.Fatalf("MaxPerObserver=%d filed %d cuts, want exactly one — a crawl that drops "+
+				"machines silently is indistinguishable from a fleet that ends there", breadth, len(cuts))
+		}
+		if cuts[0].Skipped != 2 {
+			t.Errorf("MaxPerObserver=%d reported %d skipped, want 2 — the count is what makes the "+
+				"cut actionable", breadth, cuts[0].Skipped)
+		}
+	}
+
+	// And the opposite pole, so "returns nothing" above is not satisfied by an Allow that never
+	// returns anything: a positive breadth still passes that many through.
+	g := &Graph{}
+	if got := g.Allow(Budget{MaxDepth: 1, MaxPerObserver: 1}, "hop", 0, []string{"leaf", "twin"}); len(got) != 1 {
+		t.Errorf("MaxPerObserver=1 allowed %v, want exactly one label", got)
+	}
+}

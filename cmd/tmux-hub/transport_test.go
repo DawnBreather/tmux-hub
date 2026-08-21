@@ -210,3 +210,38 @@ func TestTheVersionAnswersFromTheStampFirstAndTheBuildInfoSecond(t *testing.T) {
 		}
 	}
 }
+
+// The probe must pin the fingerprint format, because identity is compared by SET INTERSECTION and
+// `MD5:…` and `SHA256:…` are two spellings of one key — so an operator with `FingerprintHash md5` on
+// one alias and the default on another splits that machine into two nodes. Found by an adversarial
+// reviewer; measured against a real host, the same ed25519 key answered
+// `SHA256:Px9AwAvwtlm7dTELzGLm0WqaYPsFtA/7kMgsXQjfxr4` under the default and
+// `MD5:24:b6:b4:72:9a:85:5e:d6:0b:a9:7b:0d:49:8b:53:21` under the stanza, and a command-line `-o`
+// overrode the stanza.
+//
+// The expectation is the LITERAL flag, never a constant read back from the code under test: a test
+// that imports its expected value passes against a build that blanks the value, which is the whole
+// defect it exists to catch.
+func TestTheProbePinsTheFingerprintFormatItsIdentityDependsOn(t *testing.T) {
+	argv := probeArgs("hop", []string{"tmux -V"})
+	joined := strings.Join(argv, " ")
+	if !strings.Contains(joined, "-o FingerprintHash=sha256") {
+		t.Errorf("the probe argv does not pin the fingerprint format, so one machine reached through "+
+			"two aliases can become two nodes:\n%v", argv)
+	}
+	// It must come BEFORE the destination: everything after the alias is the remote command, so a
+	// flag placed there would be handed to the far shell instead of to ssh.
+	at, dest := -1, -1
+	for i, a := range argv {
+		if a == "FingerprintHash=sha256" {
+			at = i
+		}
+		if a == "hop" {
+			dest = i
+		}
+	}
+	if at < 0 || dest < 0 || at > dest {
+		t.Errorf("the flag is at %d and the destination at %d — a flag after the destination is an "+
+			"argument to the far shell:\n%v", at, dest, argv)
+	}
+}

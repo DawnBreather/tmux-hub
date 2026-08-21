@@ -321,7 +321,12 @@ func TestTheWritePathHasProductionCallSites(t *testing.T) {
 			"no cache is opened, so every opening of the picker orders by name until a probe has answered", ""},
 		{"fleetcache.DefaultPath(", "internal/fleetcache", true,
 			"the cache would live wherever a caller chose, and the next run would read a different file", ""},
-		{"fleetcache.KeyOfNode(", "internal/fleetcache", true,
+		// KeysOfNode and not KeyOfNode, and the row moved rather than being deleted: the reader's
+		// question changed from "the key" to "EVERY key this node's memory could be under", because a
+		// node's fingerprint set grows when two machines turn out to be one and the memory filed under
+		// the absorbed fingerprint would otherwise be unreachable. The invariant is unchanged — the
+		// reader must not build a node's key by hand — so what this row protects is the same thing.
+		{"fleetcache.KeysOfNode(", "internal/fleetcache", true,
 			"a node's remembered figure would be keyed by hand at the reader, which is the drift the " +
 				"KeyOf* pair exists to prevent — `fav.KeyOf` earned that rule twice on two surfaces", ""},
 		{"fleetcache.KeyOfCandidate(", "internal/fleetcache", true,

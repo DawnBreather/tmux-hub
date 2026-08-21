@@ -199,7 +199,21 @@ func DiscoveredRowsFor(nodes []fleet.Node, cands []fleet.Unverified,
 
 	var out []DiscoveredRow
 	for _, n := range nodes {
-		known, timed := look(fleetcache.KeyOfNode(n))
+		// EVERY key the node's memory could be under, not just its first fingerprint. A node's
+		// fingerprint set GROWS: two machines seen separately are two nodes, and one later
+		// observation carrying both fingerprints merges them into one whose key is the keeper's
+		// first — so everything remembered under the absorbed fingerprint becomes unreachable, and
+		// the row falls back to `no timing` and re-sorts into a slower bucket than the machine
+		// deserves. Measured: a node with a 42 ms RTT filed under its own fingerprint found nothing
+		// after the merge. `fleetcache.KeysOfNode` owns the order; this loop owns "first hit wins".
+		var known fleetcache.Facts
+		var timed bool
+		for _, k := range fleetcache.KeysOfNode(n) {
+			if f, ok := look(k); ok {
+				known, timed = f, true
+				break
+			}
+		}
 		for _, l := range n.Labels {
 			if l.Observer == rootObserver {
 				continue

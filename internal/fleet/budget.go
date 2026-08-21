@@ -103,16 +103,23 @@ func (g *Graph) Allow(b Budget, observer string, depth int, labels []string) []s
 	if len(labels) <= b.MaxPerObserver {
 		return labels
 	}
-	skipped := len(labels) - b.MaxPerObserver
+	// A NEGATIVE breadth is nonsense, and nonsense must not be a PANIC: `Budget` is exported, its
+	// fields are plain ints, and `labels[:-1]` is a slice-bounds crash rather than a refusal. Zero is
+	// already meaningful here — this package's own comment says the zero value must mean "nothing is
+	// allowed" precisely so that an unfilled struct cannot open the crawl — so a negative clamps to
+	// zero and reports every label as cut, which is the answer that keeps its promise: the caller
+	// gets no labels and the reason says how many it lost.
+	allowed := max(b.MaxPerObserver, 0)
+	skipped := len(labels) - allowed
 	g.cut(Cut{
 		Observer: observer,
 		Skipped:  skipped,
-		Why:      BreadthCut(observer, len(labels), b.MaxPerObserver),
+		Why:      BreadthCut(observer, len(labels), allowed),
 	})
 	// A copy, as every other answer this package hands out is: a window on the caller's own array
 	// would let a later write into that array rewrite an answer already given, and the reason Allow
 	// returns the labels rather than a count is that the caller keeps them.
-	return append([]string(nil), labels[:b.MaxPerObserver]...)
+	return append([]string(nil), labels[:allowed]...)
 }
 
 // cut files one report.

@@ -621,10 +621,26 @@ func sshConfigPaths() (userPath, systemPath string) {
 // indistinguishable from a handshake that never completed. NOT `-vv`: it multiplies
 // the output for no additional fact, and every byte of it lands in the reason a
 // failure shows the operator.
+//
+// `FingerprintHash=sha256` IS PART OF THE IDENTITY, not a formatting preference. `ParseHostKeys`
+// takes the fingerprint verbatim and is right to — filtering there would answer "no identity" for a
+// perfectly good handshake — but identity is compared by SET INTERSECTION, so two spellings of ONE
+// key are two identities and one machine becomes two nodes. Measured 2026-08-20 against a real host,
+// the same ed25519 key through the same client:
+//
+//	FingerprintHash sha256   SHA256:Px9AwAvwtlm7dTELzGLm0WqaYPsFtA/7kMgsXQjfxr4
+//	FingerprintHash md5      MD5:24:b6:b4:72:9a:85:5e:d6:0b:a9:7b:0d:49:8b:53:21
+//
+// and `md5` is a legal PER-STANZA client setting, so an operator with it on one alias and not another
+// splits that machine in half. Pinned HERE because a command-line `-o` beats a stanza (measured: a
+// stanza saying `md5` answered SHA256 under this flag) and because this is the one place a probe argv
+// is assembled — the same reason `-u` lives at one seam in `internal/tmux`. Accepted by OpenSSH
+// 8.9p1, the oldest client in this fleet, so it needs no far-side configuration.
 func probeArgs(alias string, args []string) []string {
 	return append([]string{
 		"-v",
 		"-o", "BatchMode=yes",
+		"-o", "FingerprintHash=sha256",
 		"-o", "ConnectTimeout=" + SSHConnectTimeout,
 		alias,
 	}, args...)
