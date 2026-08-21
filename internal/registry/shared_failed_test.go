@@ -160,7 +160,7 @@ func TestAnyWordFromAHostWithNoWorkerLosesToTheOwner(t *testing.T) {
 			}
 			p := r.Panes()[0]
 			if got := p.stateAt(now); got != state.Works {
-				t.Errorf("the row reads %v, want works — the host with no worker said %q and dev "+
+				t.Errorf("the row reads %v, want works — the host with no worker said %q and won "+
 					"(held word %q, pid %d)", got, sharer.State, p.AgentWord, p.AgentPID)
 			}
 			if p.AgentPID != owner.PID {

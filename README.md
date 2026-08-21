@@ -1,7 +1,5 @@
 # tmux-hub
 
-[![CI](https://github.com/DawnBreather/tmux-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/DawnBreather/tmux-hub/actions/workflows/ci.yml) [![Go Reference](https://pkg.go.dev/badge/github.com/DawnBreather/tmux-hub.svg)](https://pkg.go.dev/github.com/DawnBreather/tmux-hub) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-
 A control panel over your tmux sessions, built for orchestrating many Claude Code
 sessions at once.
 
@@ -20,62 +18,7 @@ that stopped being the agent you selected is refused rather than written to
 
 ## Install
 
-macOS, with Homebrew. **The name has to be qualified** — a bare `brew install tmux-hub` searches
-homebrew-core, which does not have this, and answers `No available formula with the name "tmux-hub"`:
-
-    brew install DawnBreather/tap/tmux-hub
-
-That form needs nothing else: asking for a cask by its full tap path is taken as trusting it. If you
-would rather type the short name, tap and trust once — a cask from a third-party tap is refused
-otherwise — and then it resolves unqualified:
-
-    brew tap DawnBreather/tap
-    brew trust dawnbreather/tap
-    brew install tmux-hub
-
-A release binary. Every release ships `linux_amd64`, `linux_arm64`, `macos_arm64` and
-`macos_amd64`, with a `checksums.txt` beside them — pick yours from the
-[latest release](https://github.com/DawnBreather/tmux-hub/releases/latest), or:
-
-    VER=0.1.1   # a released version; the tag is v$VER
-    curl -sSfL "https://github.com/DawnBreather/tmux-hub/releases/download/v$VER/tmux-hub_${VER}_linux_amd64.tar.gz" \
-      | tar -xz tmux-hub && ./tmux-hub --version
-
-On macOS, substitute `macos_arm64` or `macos_amd64`. These binaries are not notarised, so **if you
-take the archive from the releases page in a browser**, macOS attaches a quarantine attribute and the
-first run dies with "cannot be opened because the developer cannot be verified" — which reads as a
-broken build rather than as Gatekeeper. Clear it once:
-
-    xattr -d com.apple.quarantine ./tmux-hub
-
-Downloading with `curl` does not set that attribute, and the Homebrew cask clears it for you in a
-`postflight`, so this applies only to the browser route.
-
-With Go:
-
-    go install github.com/DawnBreather/tmux-hub/cmd/tmux-hub@latest
-
-Or from a clone:
-
     go build -o tmux-hub ./cmd/tmux-hub
-
-`tmux` is the only requirement, on any host you point the hub at. Versions 3.2a and 3.7b are both
-supported and are the two every tmux-facing claim in `docs/design.md` was measured against.
-
-### Platforms
-
-Linux and macOS, on x86-64 and arm64. Two things differ by platform, both in one place each:
-
-- **Reading the process table.** Identifying which pane runs an agent means walking processes.
-  On Linux that is one pass over `/proc`; macOS has no `/proc`, so it is one `ps -A -ww` and the
-  same identification on the result (`internal/proc`).
-- **Asking who is on the other end of a socket.** Linux answers with `SO_PEERCRED`; macOS splits
-  the same answer into `LOCAL_PEERPID` and `LOCAL_PEERCRED` (`internal/hub/peer_*.go`). On a
-  platform with neither, the hub loses that corroboration and nothing else.
-
-A **remote** host is expected to be Linux: the one-shot walk the hub runs over ssh reads `/proc`
-on the far side, so a remote macOS host polls and displays but identifies no agents — and an
-unidentified target is one every send refuses.
 
 ## Use
 
@@ -279,17 +222,3 @@ stops answering stays on the list marked `stale`, keeping its last screen.
 `docs/design.md` is the spec, and §3 is worth reading before changing anything:
 it records measurements against live tmux 3.7b and 3.2a where the obvious
 implementation is wrong.
-
-The UI review scenes in `docs/ui-mockup.html` and `docs/ui-flows-possession.html` are generated
-from the renderer itself and are byte-reproducible, so they are also the regression instrument for
-any change to a frame. Their narration is in Russian; the program's own strings are English, and a
-test enforces that.
-
-## Contributing
-
-`CONTRIBUTING.md` lists the gates and how to run the interface tests. Security reports go through
-`SECURITY.md`.
-
-## License
-
-MIT — see `LICENSE`.

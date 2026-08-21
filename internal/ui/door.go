@@ -139,9 +139,20 @@ func doorWindowName(p registry.Pane, aliases project.Aliases) string {
 
 // wakePayload is the ONE argument `new-session` hands to `$SHELL -c` for the door.
 //
-// It is §20's own wrapper, reused rather than reinvented: one measured `claude` failure exits 1 with
-// a single stderr line, so a shell has to outlive the payload or the message evaporates with the
-// pane. `WindowPayload`'s doc comment carries the measurements behind that.
+// It is `LoginPayload` and not §20's `WindowPayload`, which is what it used to be, for two reasons
+// measured on dev-air (login shell nushell, tmux 3.7b) — and the door runs on the ROW's host, so a
+// remote one is the normal case rather than the exotic one:
+//
+//   - `WindowPayload`'s script holds a `'` (its `printf` idiom), and the transport's POSIX quoting
+//     turns that into close-quote, backslash-quote, reopen-quote, which nushell reads as the END of the string and then parses the rest
+//     as nu code: `Error: nu::parser::parse_mismatch` at **rc=0**, so the hub saw a create succeed
+//     with no session behind it.
+//   - the pane inherits the ssh client's NON-LOGIN PATH, which on that host does not contain
+//     `claude` at all.
+//
+// Both wrappers answer the same third requirement, which is why this is a swap and not a loss: one
+// measured `claude` failure exits 1 with a single stderr line, so a shell has to outlive the payload
+// or the message evaporates with the pane.
 //
 // It carries NO `--debug-file`, and that closes one of §22.3's UNVERIFIED items with a measurement
 // rather than a guess: `claude attach --debug-file /tmp/x deadbeef` answers rc=1 with
@@ -151,8 +162,8 @@ func doorWindowName(p registry.Pane, aliases project.Aliases) string {
 //
 // The argument is the SHORT id: measured, `claude logs <full uuid>` answers `No job matching`, and
 // none of the three verbs resolves a uuid.
-func wakePayload(agentID string) string {
-	return WindowPayload([]string{"claude", "attach", agentID})
+func wakePayload(agentID string) (string, error) {
+	return LoginPayload([]string{"claude", "attach", agentID})
 }
 
 // wokenMsg reports what the door did. `created` is empty when `err` is set, except that a name
@@ -178,7 +189,20 @@ type wokenMsg struct {
 // previous `a` made.
 func (m model) wake(p registry.Pane, h hub.Host) (tea.Model, tea.Cmd) {
 	run, ctx, keeper, stamper, hist := m.run, m.ctx, m.keeper, m.stamper, m.hist
-	name, payload := wakeName(p), wakePayload(p.AgentID)
+	name := wakeName(p)
+	// The guard can only refuse an id that is not a plain word, and `wakeable` has already refused an
+	// EMPTY one — so this is the case where the listing gave a short id the hub cannot put in a command
+	// line. Checked here rather than inside the tea.Cmd because it needs no host and no runner.
+	//
+	// The builder's own sentence is not the one shown: it explains quoting, and its remedy is at the
+	// tail where the footer's one line cuts it. This one leads with the remedy, bounded like every
+	// other refusal that quotes a name off the row.
+	payload, err := wakePayload(p.AgentID)
+	if err != nil {
+		m.note = fmt.Sprintf("%s reports a short id the hub cannot put in a command line (%q) — "+
+			"run `claude agents` and wake it there", shortSubject(wakeSubjectName(p)), p.AgentID)
+		return m, nil
+	}
 	// What `C-b w` will call the window under that session. Without it tmux renames the window to the
 	// wrapper shell within a second, so the operator's own session tree read `sh` under every door
 	// session while the dashboard showed them the row's name (§21.18).

@@ -110,7 +110,7 @@ snap cap-05-after-close.txt
 # "back from api:review", so a broken jump read as a completed one. The first fix
 # was `set -w remain-on-exit on` after the create, and it lost a race it could
 # only win on time — new-window is what STARTS the payload (measured: a payload of
-# `false` was lost in 6 of 12 trials) — and when it dev, it left a DEAD pane,
+# `false` was lost in 6 of 12 trials) — and when it won, it left a DEAD pane,
 # whose visible screen carries only tmux's banner while ssh's own line goes into
 # the scrollback. So NO option is set here, and the payload holds the window
 # itself: this is the argument AttachWindow now sends, built the way internal/ui's

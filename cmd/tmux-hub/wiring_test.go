@@ -126,11 +126,19 @@ func TestEveryPackageIsReachableFromMain(t *testing.T) {
 // fails when an exempt package turns out to BE linked, so an entry cannot outlive its
 // reason quietly. Task 10 of the plan below asserts this map is empty before the branch
 // closes.
-// Emptied by Task 7: the picker consumes hostset.Candidate/Result/Entry, so
-// internal/ui links hostset and main links ui. The appointment was written for Task
-// 8, which wires main's own probe round and hosts.toml read — that work is still
-// outstanding, but the LINKAGE this floor measures arrived a task early, and the loop
-// above is right to refuse a stale entry rather than wait for its named task.
+// EMPTY, and it has been emptied twice by the same mechanism working as designed.
+//
+// The first time was Task 7 of the picker plan: the picker consumed
+// hostset.Candidate/Result/Entry, so internal/ui linked hostset and main linked ui.
+// The second is task 6 of docs/plans/2026-08-20-fleet-discovery.md — the entry read
+// "task 1 lands the graph model; task 6 wires it through internal/ui and the picker,
+// and deletes this entry", and this is that deletion. `internal/ui/discovered.go`
+// holds the graph behind a lock and draws it in the picker, and
+// `internal/hostset/remote.go` now takes its per-hop cap from fleet.DefaultBreadth —
+// so fleet is linked twice over and the loop above refused the entry as STALE the
+// moment it was. The refusal is what makes an appointment an appointment rather than
+// a permission: it arrived before any human noticed, and removing it is the proof the
+// package is wired rather than a claim that it is.
 var underConstruction = map[string]string{}
 
 // TestTheWritePathHasProductionCallSites asks the sharper question: a package can be
@@ -268,6 +276,111 @@ func TestTheWritePathHasProductionCallSites(t *testing.T) {
 			"a master whose host is no longer enabled would run until --stop-masters", ""},
 		{"hub.StopAllMasters(", "internal/hub", true,
 			"--stop-masters is the only way out of a design where masters outlive the hub", ""},
+
+		// THE FLEET GRAPH, THE REMEMBERED TIMINGS, AND THE MACHINES BEHIND THE HOPS. Twenty-five
+		// commits added three packages and a picker section, and not one row here asked whether any of
+		// it is REACHED — which is the state this file exists to catch, and it was caught by hand: a
+		// verifier deleted the crawl's dispatch from `openPicker` and the whole default suite reported
+		// `ok` at rc=0 for internal/ui and cmd/tmux-hub alike.
+		//
+		// The package-level floor above cannot see this. `internal/fleet` is linked because
+		// `internal/hostset` takes its per-hop cap from it, `internal/fleetcache` because main opens a
+		// cache — so both packages are in the binary with the whole crawl dead, which is precisely the
+		// "linked because ONE symbol is used" case this second test was written for.
+		{"fleet.New(", "internal/fleet", true,
+			"nothing holds an observation, so a round has nowhere to fold what a hop declared", ""},
+		{"fleet.DefaultBudget(", "internal/fleet", true,
+			"the crawl runs with a zero budget, and fleet spec §3.3's report of what was cut then names " +
+				"a knob nobody applied", ""},
+		{"fleet.Diagnose(", "internal/fleet", true,
+			"every discovered machine carries a state and no remedy, which invariant 4 forbids and which " +
+				"is this repository's oldest defect class — keep the label, lose the action", ""},
+		{"fleet.BreadthCut(", "internal/fleet", true,
+			"a per-hop cut would word itself in hostset instead of in the one place that owns the " +
+				"sentence, and two spellings of a cut are two counts a reader cannot compare", ""},
+		// The receiver is IN the needle for these two, because the bare method name is also somebody
+		// else's verb: `.Observe(` is the send log's (model.go: `m.log.Observe(m.panes, …)`) and
+		// `.Allow(` is this feature's own wrapper. A needle satisfied by a different mechanism is a row
+		// that cannot fail for the reason it names.
+		{"g.Observe(", "internal/fleet", true,
+			"the graph is made, locked and never written to, so the section draws an empty fleet forever", ""},
+		{"g.Allow(", "internal/fleet", true,
+			"the budget is a comment rather than a gate, which is the silent horizon §3.3 exists to prevent", ""},
+		{".Nodes(", "internal/fleet", true,
+			"a machine the root has verified never reaches the section's Mounted tier", ""},
+		{".Candidates(", "internal/fleet", true,
+			"the declared-and-unverified machines are the section's whole product today (§3.4)", ""},
+		{".Cuts(", "internal/fleet", true,
+			"a cut is filed and never read, so a truncated crawl reads exactly like a complete one", ""},
+		{".Edges(", "internal/fleet", true,
+			"the observer-to-machine edges",
+			"built but unwired: the section is a list of nodes and candidates (fleet spec §3.4), and " +
+				"nothing draws the graph as a graph yet"},
+
+		{"fleetcache.Open(", "internal/fleetcache", true,
+			"no cache is opened, so every opening of the picker orders by name until a probe has answered", ""},
+		{"fleetcache.DefaultPath(", "internal/fleetcache", true,
+			"the cache would live wherever a caller chose, and the next run would read a different file", ""},
+		{"fleetcache.KeyOfNode(", "internal/fleetcache", true,
+			"a node's remembered figure would be keyed by hand at the reader, which is the drift the " +
+				"KeyOf* pair exists to prevent — `fav.KeyOf` earned that rule twice on two surfaces", ""},
+		{"fleetcache.KeyOfCandidate(", "internal/fleetcache", true,
+			"the candidate half of the same rule",
+			"unwired, and measured rather than assumed: a candidate INHERITS ITS HOP's figure, so " +
+				"DiscoveredRowsFor keys on `{Observer: rootObserver, Alias: c.Observer}` — the root's " +
+				"alias for the HOP — and never on the candidate's own pair. Nobody has timed a machine " +
+				"the root cannot reach, so there is no fact to key that way yet"},
+		// The two remembered-timing PORTS are method VALUES rather than calls, so the wiring is the
+		// assignment and there is nothing with a paren to look for. The field name is in the needle
+		// because `cache.Facts` on its own is a substring of the TYPE `fleetcache.Facts` (measured:
+		// internal/ui/discovered.go names that type four times), which would make the row satisfied by
+		// a signature.
+		{"Facts: cache.Facts", "internal/fleetcache", true,
+			"the section orders by remembered figures and would have none, so a probe's measurement " +
+				"would be written each run and read never", ""},
+		{"Learn: cache.Record", "internal/fleetcache", true,
+			"nothing persists what a round measured, which is the whole reason the package exists", ""},
+
+		{"hostset.RemoteCandidates(", "internal/hostset", true,
+			"the Behind port has nothing behind it, so the picker says the hub was started without a way " +
+				"to read a hop's own ssh config — on a hub that has one", ""},
+		// BARE, and the package qualifier would have been a row that cannot pass: the only caller is
+		// `Probe` in the same package, and an in-package caller writes `ParseHostKeys(errOut)`. The
+		// convention this file already uses for that shape is `IdentifyAgent(` and `Snapshot()`.
+		{"ParseHostKeys(", "internal/hostset", false,
+			"a probe harvests no machine identity, so two aliases for one machine stay two nodes and a " +
+				"remembered fact does not survive the alias it was learned under", ""},
+
+		// The three wires inside internal/ui, which is where the crawl becomes a screen. `outside` is
+		// false because a screen's dispatcher is legitimately its own package — the package-level floor
+		// above proves internal/ui is in the binary, so a non-test caller here is reached.
+		{".crawlBehind(", "internal/ui", false,
+			"the picker opens and nothing ever asks a hop what it declares: `Behind your hops` is built, " +
+				"ordered, drawn and permanently empty. MEASURED: deleting this one dispatch left every " +
+				"default gate green, which is why this row exists", ""},
+		{".learnFromProbe(", "internal/ui", false,
+			"a probe round's figures are measured and forgotten, so the section cannot paint in a " +
+				"remembered order and reorders under its reader instead", ""},
+		{".discoveredArrived(", "internal/ui", false,
+			"a finished round arrives as a message nothing folds in", ""},
+		{"RenderDiscovered(", "internal/ui", false,
+			"the section is built and never drawn, which is this repository's signature defect", ""},
+		{"DiscoveredRowsFor(", "internal/ui", false,
+			"the graph never becomes rows on the crawl's own path", ""},
+		{".crawlRefusal(", "internal/ui", false,
+			"the sentence the screen owes an operator who cannot look behind a hop at all",
+			"NOT deliberately unwired — an APPOINTMENT, in `underConstruction`'s sense. Measured: its " +
+				"only caller in the tree is internal/ui/discovered_test.go, so the two sentences it " +
+				"words (`this hub was started without a way to read a hop's own ssh config`, `nothing " +
+				"to look behind yet — keep a host with space`) are defined, tested and never drawn, and " +
+				"an empty section reads as `there is nothing back there`. The staleness check below " +
+				"deletes this entry the moment the picker draws it"},
+		{"ui.WithDiscovered(", "internal/ui", true,
+			"installs a section without a network, a hop or a container",
+			"unwired, and its own doc comment overstates: it says a frame test and the published mockup " +
+				"hold a section through it, and measured, NOTHING calls it — the frame tests assign " +
+				"`m.discovered` directly. Kept because the option is the only way an out-of-package " +
+				"caller could hold one"},
 	} {
 		found := ""
 		for _, f := range files {
@@ -286,22 +399,52 @@ func TestTheWritePathHasProductionCallSites(t *testing.T) {
 			}
 			t.Errorf("%s has no production call site %s — %s", c.symbol, where, c.why)
 		}
+		// A STALE EXEMPTION IS THE DANGEROUS HALF, and until now only the package map above said so.
+		// An exemption is a claim that a symbol is unwired; once it IS wired the claim is false, and a
+		// false one here lowers the floor for that symbol forever with nobody looking. Measured before
+		// adding this: all seven exempt rows are genuinely unwired in a clean `git archive HEAD` tree,
+		// so it starts green — and it is what turns the `.crawlRefusal(` appointment above into an
+		// appointment rather than a permission.
+		if found != "" && c.exempt != "" {
+			t.Errorf("%s IS called from %s, so its exemption is stale — delete the exempt string "+
+				"(it says: %s)", c.symbol, found, c.exempt)
+		}
 	}
 }
 
-// calls reports whether a body CALLS the symbol, as opposed to declaring it. A
-// declaration matches every plausible pattern — `func Snapshot()` contains
-// "Snapshot()" — and counting one would let a symbol vouch for its own wiring.
+// calls reports whether a body CALLS the symbol, as opposed to declaring it or writing about it.
+// Three rules, and the two new ones were each measured rather than reasoned.
+//
+// A DECLARATION does not count: `func Snapshot()` contains "Snapshot()", and counting it would let a
+// symbol vouch for its own wiring. But the rule cannot be "skip the whole line", because a ONE-LINE
+// FUNCTION carries its body on that line — `func crawlBudget() fleet.Budget { return
+// fleet.DefaultBudget() }` is a real call site, and it is the ONLY call site `internal/ui` has for
+// `fleet.DefaultBudget`; `fleet.New` is reached through exactly one more of the same shape. Both were
+// invisible to this floor, so a row for either would have failed against correct code. On a `func`
+// line the search therefore starts at the opening brace: a name in the SIGNATURE is a declaration, a
+// name in the BODY is a call.
+//
+// A COMMENT does not count either. This repository's comments name the functions they are about
+// constantly, so a row satisfied by prose would go green on the day the call is deleted and the
+// sentence describing it survives — which is the wrong-comment shape CLAUDE.md already warns about,
+// pointed at the floor itself. Measured before adding it: none of the 43 rows that existed then was
+// satisfied by a comment line, so this narrows the floor without moving any row.
 func calls(body, symbol string) bool {
 	for _, line := range strings.Split(body, "\n") {
-		i := strings.Index(line, symbol)
-		if i < 0 {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") {
 			continue
 		}
-		if strings.HasPrefix(strings.TrimSpace(line), "func ") {
-			continue
+		if strings.HasPrefix(trimmed, "func ") {
+			brace := strings.Index(line, "{")
+			if brace < 0 {
+				continue
+			}
+			line = line[brace:]
 		}
-		return true
+		if strings.Contains(line, symbol) {
+			return true
+		}
 	}
 	return false
 }
@@ -320,7 +463,15 @@ func nonTestSources(t *testing.T, root string) []source {
 		}
 		if d.IsDir() {
 			switch d.Name() {
-			case ".git", "docs", ".superpowers", "prototypes":
+			// `.claude` holds WORKTREES, which are whole copies of this repository that git tracks
+			// nothing of. A copy carries the same production lines, so a symbol unwired HERE is
+			// vouched for by a file that used to wire it, and every row below quietly stops asking its
+			// question. Measured: with three worktrees present and `hostset.RemoteCandidates` deleted
+			// from the real `main.go`, this floor reported `ok` — the copies answered for it.
+			//
+			// It is also the second reason CLAUDE.md says to verify the COMMIT: `git archive HEAD`
+			// contains no untracked file, so a gate run there never had this hole.
+			case ".git", "docs", ".superpowers", "prototypes", ".claude":
 				return filepath.SkipDir
 			}
 			return nil
@@ -382,7 +533,7 @@ func TestTheMasterSpawnIsNotOnTheFirstPaintPath(t *testing.T) {
 	hosts := []hub.Host{
 		{Label: "local", Socket: "/tmp/tmux-1000/default", LocalProc: true},
 		{Label: "nuc", SSHDest: "nuc", ControlPath: "/run/user/1000/cm-1-nuc"},
-		{Label: "eu", SSHDest: "eu", ControlPath: "/run/user/1000/cm-2-kg"},
+		{Label: "eu", SSHDest: "eu", ControlPath: "/run/user/1000/cm-2-eu"},
 		// A --host entry whose label is not its ssh destination, which is the one shape
 		// that can tell "keyed on the destination" from "keyed on the label". ssh is
 		// handed the destination and ControlPathFor hashes it, so a label here would

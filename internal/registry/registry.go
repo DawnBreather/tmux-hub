@@ -7,6 +7,7 @@ package registry
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -56,7 +57,15 @@ type Pane struct {
 	WindowID string // `@N`; what "has this pane moved" is asked about, for the same reason
 	Session  string
 	Window   string
-	Command  string
+	// Command is what this row RUNS, as the operator should read it, and it is DERIVED on both
+	// kinds of row rather than copied: an agent row carries the listing's kind (`background`,
+	// `interactive`), and a pane row carries `#{pane_current_command}` with one substitution —
+	// `runningCommand` unwraps a launcher's wrapper shell, because a wrapper is the LAUNCHER's
+	// implementation detail and the row's job is to name the program. The raw current command is
+	// therefore not kept: nothing reads it (the substitution is the only consumer, and it is a
+	// pure function of the two label fields), while `StartCommand` — the premise it decides on —
+	// stays on the row untouched.
+	Command string
 
 	ClassifiedState state.State // derived from pixels; prefers AgentState when fresh
 	Zone            []string    // the captured tail, as captured
@@ -605,7 +614,13 @@ func (r *Registry) UpdateAgents(host string, ss []agents.Session, now time.Time)
 // version stripped only `'` and the backslash, so the bare string still began with a double quote and
 // the anchor never matched — it passed a unit test whose fixture I had quoted by hand and changed
 // nothing on the fleet. The fixture now carries the string read off the operator's own server.
-var doorPayload = regexp.MustCompile(`^sh -c claude attach ([A-Za-z0-9_-]+)`)
+//
+// BOTH shell flags, and that is not tidiness. The door's wrapper became `sh -lc` when a remote pane
+// turned out to inherit the ssh client's non-login PATH (`ui.LoginPayload`), and the panes a PREVIOUS
+// build created still carry `sh -c` in their start command for as long as they live. Matching only the
+// new form would break the join for every door pane already open at the moment the hub is upgraded —
+// which is the defect this recovery exists to prevent, arriving through the fix for another one.
+var doorPayload = regexp.MustCompile(`^sh -l?c claude attach ([A-Za-z0-9_-]+)`)
 
 // attachedSessionID is the short id a door pane is attached to, or "".
 // AttachedSessionID is exported for the one caller outside this package that needs the same
@@ -618,12 +633,115 @@ func attachedSessionID(start string) string {
 	if start == "" {
 		return ""
 	}
-	bare := strings.NewReplacer("'", "", `"`, "", `\`, "").Replace(start)
-	bare = strings.Join(strings.Fields(bare), " ")
+	bare := strings.Join(startCommandWords(start), " ")
 	if m := doorPayload.FindStringSubmatch(bare); m != nil {
 		return m[1]
 	}
 	return ""
+}
+
+// startCommandWords are the words of `#{pane_start_command}` with tmux's own quoting removed.
+//
+// tmux QUOTES this value as it hands it back, and the shape is measured rather than assumed: on
+// 3.7b, a create whose command is the ONE argv word `sh -lc "claude attach 30f3382b || { echo;
+// echo failed; read x; }"` reads back as
+//
+//	"sh -lc \"claude attach 30f3382b || { echo; echo failed; read x; }\""
+//
+// — an outer pair tmux adds around any word containing a space, plus a backslash before every
+// inner quote. So the words of a payload are never adjacent in the raw string, which is why a grep
+// over this field for a two-word phrase answers zero on a fleet full of matches; this repo has
+// paid for that once. Both readers of the field in this package go through here, so the strip
+// cannot drift between them.
+func startCommandWords(start string) []string {
+	return strings.Fields(startCommandUnquote.Replace(start))
+}
+
+var startCommandUnquote = strings.NewReplacer("'", "", `"`, "", `\`, "")
+
+// wrapperShells are the program names that mean "a shell is in the foreground of this pane", which
+// is the only case in which the pane's start command is a better answer than its current one.
+//
+// TWO shells can be there and they are different programs. The inner one is the payload's own
+// `sh -lc` (`ui.LoginPayload`). The outer one is the pane's `default-shell`, because a tmux create
+// hands its command STRING to that shell — `ui.LoginPayload`'s own doc records the same payload
+// reading `sh` on nuc and `nu` on dev-air, whose login shell is nushell. So every plausible login
+// shell belongs here, POSIX or not.
+//
+// Erring SHORT is the safe direction and that is why this is a list of shells and nothing else: a
+// name that is absent keeps today's behaviour (the row reads what tmux reported), which is only
+// ever wrong in the way it is wrong today, while a name that is here WRONGLY makes a pane genuinely
+// running that program read as its start command instead — a lie about a different pane.
+var wrapperShells = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "dash": true, "ash": true, "ksh": true,
+	"csh": true, "tcsh": true, "fish": true, "nu": true, "elvish": true, "xonsh": true,
+}
+
+// runningCommand is what a pane row's Command says: the program the pane RUNS, which is not always
+// the program tmux reports.
+//
+// Measured on tmux 3.7b in one invocation, and these cells are the whole argument — each `created
+// with` is ONE argv word, as a tmux create takes it:
+//
+//	created with                                       current command   start command
+//	(nothing)                                          zsh               (empty)
+//	sh                                                 sh                sh
+//	sleep 300                                          sleep             sleep 300
+//	sh -lc "claude attach 30f3382b || { … read x; }"   sh                "sh -lc \"claude attach…\""
+//	sh -lc "claude-fake --session-id abc123 || { … }"  sh                "sh -lc \"claude-fake…\""
+//	ssh -S … -t nuc tmux attach -t "$0"                ssh               "ssh -S … attach…"
+//
+// A LONE command is exec'd by the wrapper shell, so tmux reports the real program; a command with a
+// `||` arm cannot be exec'd, so the wrapper stays in the foreground for as long as the payload runs
+// and tmux reports the SHELL. `ui.LoginPayload` builds exactly that second shape, and the `||` arm
+// is load-bearing (§20: a payload that exits destroys pane, window and session inside 200 ms and
+// takes its own failure message with it, while a `remain-on-exit` sent AFTER the create loses that
+// race — `false` survived 6 of 12 trials). So the arm stays and the row stops reporting the
+// wrapper: every pane the launch and the door create read `sh` on the dashboard without this.
+//
+// THE DISCRIMINATOR IS THE START COMMAND, and it is what keeps this from lying about a shell the
+// operator started themselves. `#{pane_start_command}` is EMPTY for a pane created with no command
+// (first cell) — which is every shell a person gets by opening a window — and a pane created with a
+// command that IS a shell (second cell) has no program after the shell word. Both keep reading as a
+// shell. Both poles are asserted through Update in wrappedcommand_test.go.
+//
+// The first non-flag word of the payload is the answer, and that is deliberately all the parsing
+// there is: it is the word the launcher chose to run. A payload that opens with something else —
+// `sh -lc "cd /x && claude"` — is named by that word instead, which is honest about what the pane
+// was started with and is not a shape anything in this repo builds. Widening it would mean a list
+// of prefix verbs to keep in step with somebody else's shell.
+func runningCommand(current, start string) string {
+	// `start == ""` is a SHORTCUT and not a guard — measured by mutation: removing it alone leaves
+	// every test green, because an empty start command produces no words and the check below returns
+	// the same answer. It is kept because most panes on a fleet have no start command at all, and it
+	// saves them the unquote and the split; nobody should read it as load-bearing.
+	if !wrapperShells[current] || start == "" {
+		return current
+	}
+	words := startCommandWords(start)
+	if len(words) == 0 || !wrapperShells[filepath.Base(words[0])] {
+		// The start command does not open with a shell, so there is no wrapper to unwrap and a
+		// shell in the foreground under it is the operator's own business.
+		return current
+	}
+	for _, w := range words[1:] {
+		if strings.HasPrefix(w, "-") {
+			continue // the wrapper's own flags: -c, -lc, -l
+		}
+		// A basename because the field's contract is a process NAME: tmux reports one, and a
+		// payload naming `/usr/local/bin/claude` must not make one row's cell wider than the rest.
+		//
+		// A payload whose own program is a SHELL is not special-cased: it names that shell, which
+		// is what the pane runs. Measured — `sh -lc "bash -i || { … }"` reports `bash` as its
+		// current command already, because an interactive shell takes the tty's foreground process
+		// group while a non-interactive `sh` payload does not, so both readings agree there.
+		prog := filepath.Base(w)
+		if prog == "." || prog == "/" {
+			return current
+		}
+		return prog
+	}
+	return current
 }
 
 // oneRecordPerConversation folds listing records that are the SAME conversation seen under two kinds.
@@ -765,7 +883,11 @@ func (r *Registry) Update(host string, ds []tmux.Delta, ls map[string]tmux.Label
 		l := ls[d.PaneID]
 		p.Stale, p.StaleSince = false, time.Time{}
 		p.SessionID, p.WindowID = d.SessionID, d.WindowID
-		p.Session, p.Window, p.Command = l.Session, l.Window, l.Command
+		// The command is DERIVED here, at the one place a pane row's is written, so no reader can
+		// forget the substitution — the row, the tile, the project list, `--status` and the state
+		// log all read the same field. `runningCommand` says what it does and why the wrapper is
+		// not the answer.
+		p.Session, p.Window, p.Command = l.Session, l.Window, runningCommand(l.Command, l.StartCommand)
 		p.Path = l.Path
 		// The session's own options, so the status-line publisher can write only what
 		// differs (docs/design.md §21.16). They come from the same fetch as the labels.

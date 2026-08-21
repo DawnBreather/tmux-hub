@@ -1,0 +1,86 @@
+#!/bin/sh
+# The fake `claude`, for the harness only.
+#
+# It REPLAYS JSON captured from the real CLI on 2026-08-20 (`claude agents --json --all`,
+# reduced to two sessions) rather than producing a shape from imagination — spec §4.2, and this
+# repository has twice paid for an invented fixture. The capture is `claude-agents.json`: the
+# keys, their order, their types and the CLI's own 2-space indentation are all the real ones;
+# only the values that are the operator's — a path, a prompt, a uuid, a pid, a clock — were
+# replaced, because this repository is public.
+#
+# The two records differ in FIELD PRESENCE, which is the whole point of keeping two: a record
+# carries `pid` and `status` exactly when the host that answered can see a worker. A fixture of
+# two records that differ only in their state word would let a consumer pass while treating "no
+# worker here" and "this session is finished" as one fact, which is a defect this repository has
+# shipped twice.
+#
+# What it is NOT: the vendor's program. It answers the one invocation the hub makes and refuses
+# everything else by name. The live fleet stays the check for the CLI's own behaviour.
+set -eu
+
+fixture=${HARNESS_CLAUDE_FIXTURE:-/harness/claude-agents.json}
+
+refuse() {
+	echo "$1" >&2
+	exit 1
+}
+
+verb=${1:-}
+[ -n "$verb" ] || refuse "this is the harness's fake claude; it answers 'agents --json --all', 'attach <id>' and '--version'"
+shift
+
+case "$verb" in
+--version | -v)
+	# The front-end's version, and only that: the process that serves the work may be a
+	# different one, measured — an attach claims a pre-warmed `bg-spare`, so a per-version claim
+	# about the CLI does not transfer to the process that answers.
+	echo "2.1.233 (Claude Code)"
+	;;
+
+agents)
+	json=no
+	all=no
+	for arg in "$@"; do
+		case "$arg" in
+		--json) json=yes ;;
+		--all) all=yes ;;
+		*) refuse "the harness's fake claude does not know 'agents $arg'; it knows --json and --all" ;;
+		esac
+	done
+	[ "$json" = yes ] || refuse "the harness's fake claude only speaks --json; the hub asks for 'agents --json --all' (internal/agents/agents.go)"
+
+	if [ "$all" = yes ]; then
+		cat "$fixture"
+	else
+		# Measured on the real CLI, 2026-08-20, same fleet seconds apart: `--all` returned 34
+		# records and bare `--json` returned 17, and the 19 it dropped were the sessions that had
+		# ENDED with no worker left — 14 `done`, 3 `failed`, 1 `stopped`, none of them carrying a
+		# `pid`. A `blocked` record with no pid was KEPT, so the discriminator is not the state
+		# word alone: it is a terminal state AND no worker. `internal/agents` already records the
+		# consequence in one line — "`--all` is not optional: bare `--json` omits every terminal
+		# row" — and this branch is what lets that claim be tested rather than believed.
+		jq '[ .[] | select( (.state | IN("done","failed","stopped")) and (has("pid") | not) | not ) ]' "$fixture"
+	fi
+	;;
+
+attach)
+	target=${1:-}
+	if [ -z "$target" ]; then
+		refuse "attach needs a session id"
+	fi
+	if ! jq -e --arg id "$target" 'any(.[]; .id == $id or .sessionId == $id)' "$fixture" >/dev/null; then
+		# The real CLI's own refusal, measured on 2.1.224 and 2.1.233 alike. Quoted rather than
+		# paraphrased, because it is the only text a caller can match on.
+		echo "No job matching '$target'. Run 'claude agents' to list running sessions." >&2
+		exit 1
+	fi
+	# A door pane must stay open, or tmux destroys pane, window and session inside 200 ms and
+	# every observation reads as "the door created nothing".
+	echo "attached to $target (harness fake)"
+	exec sleep 86400
+	;;
+
+*)
+	refuse "the harness's fake claude does not know the verb '$verb'; it knows agents, attach and --version"
+	;;
+esac

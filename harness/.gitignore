@@ -1,0 +1,6 @@
+# Everything the generator writes is derived, and one part of it is secret.
+#
+# The compose file is a function of the topology, so committing it would give the repository two
+# answers to one question. The keypairs are worse than redundant: this repository is public, and
+# a secret scanner should fire on a private key inside it (spec §4.2). Both live here.
+.out/

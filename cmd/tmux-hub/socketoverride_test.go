@@ -111,17 +111,24 @@ func TestASocketOverrideInTheHostsFileReachesTmux(t *testing.T) {
 	// nothing.
 	assertSpawnedArgv(t, got, []string{"-o", "BatchMode=yes", "-o", "ProxyCommand=false",
 		"-S", hub.ControlPathFor(rt, "nuc"), "nuc",
-		`tmux '-L' 'work' 'list-panes' '-a' '-F' '#{pane_id}'`})
+		`tmux '-u' '-L' 'work' 'list-panes' '-a' '-F' '#{pane_id}'`})
 }
 
 // The other half of the same wire: a file with no `tmux_args` spawns the argv it always
 // did. A test that only proves the override TRAVELS cannot see one invented out of
 // nothing — an empty argument between the destination and the payload would make the
 // far shell run `tmux` with an empty command name.
+//
+// `-u` is in both expectations because it is in every argv this codebase builds: the
+// label format frames values by the byte length tmux reports, and a client with no
+// UTF-8 locale emits one `_` per non-ASCII character while that length keeps reporting
+// the stored size — which took a whole host dark (known-issues U1). These two cases are
+// the only ones that read the argv off a REAL SPAWNED PROCESS, so they are where the
+// flag being present end to end is actually established rather than argued.
 func TestAHostWithNoOverrideStillSpawnsThePlainArgv(t *testing.T) {
 	rt := runtimeDir(t)
 	got := pollThroughTheSeam(t, "[[host]]\nalias = \"nuc\"\nenabled = true\n")
 	assertSpawnedArgv(t, got, []string{"-o", "BatchMode=yes", "-o", "ProxyCommand=false",
 		"-S", hub.ControlPathFor(rt, "nuc"), "nuc",
-		`tmux 'list-panes' '-a' '-F' '#{pane_id}'`})
+		`tmux '-u' 'list-panes' '-a' '-F' '#{pane_id}'`})
 }

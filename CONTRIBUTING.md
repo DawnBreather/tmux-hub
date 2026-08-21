@@ -1,76 +1,44 @@
 # Contributing
 
-Bug reports and patches are welcome. The bar here is unusual in one way worth knowing up front:
-**this project treats a measurement as the argument.** Where a change rests on how tmux, ssh or
-Claude Code behaves, say what you ran and what it answered — `docs/design.md` is full of that
-shape and is the authority for how the program is meant to work.
+## Two rules that are not style preferences
 
-## Build and run
+**1. Every tmux invocation carries an explicit socket.**
 
-    go build -o tmux-hub ./cmd/tmux-hub
-    ./tmux-hub --help
+A tmux command with no `-S`/`-L` talks to *your own live tmux server*. During this
+project's design phase a probe run against a live server destroyed two
+long-running sessions. `tmux.Runner` refuses an empty socket, and tests use
+`t.TempDir()` sockets that they kill in `t.Cleanup`.
 
-You need `tmux` on any host you point it at. `tmux 3.2a` and `3.7b` are both supported and are the
-two versions every tmux-facing claim in `docs/design.md` was measured on.
+Never target the session `live1` or the default socket from a test or a script.
 
-## The gates
+**2. Never name `#{client_activity}` or `#{client_created}`.**
 
-CI runs all of these on every push. Run them before you open a pull request:
+On tmux 3.2a, querying either with no client attached **segfaults the entire
+server**, taking every session with it. No guard helps: `#{q:...}`, `#{?...}`,
+`x#{...}y` and `#{t:...}` all crash. `TestNoSourceFileNamesAForbiddenFormat`
+enforces this at the repo level.
 
-    gofmt -l .                              # must print nothing
-    go build ./...
-    go vet ./...
-    go vet -tags e2e ./internal/e2e/        # behind a build tag, so the default vet cannot see it
-    go vet -tags mockup ./internal/ui/      # likewise
-    go test ./...                           # 19 packages
-    go test -race ./...
+## A third, subtler one
 
-    # The two HTML documents in docs/ are generated from the renderer and byte-reproducible.
-    go test -tags mockup -run TestGenerate ./internal/ui/
-    git diff --exit-code -- docs/
+**No literal `%` in a tmux argument unless the whole argument is a pane id.**
 
-**Count the `ok` lines against the package count (19).** A package that failed to build is not
-reported as a failure — it is not reported at all.
-
-Changing production copy in `internal/ui` means regenerating the documents, because they are the
-renderer's own bytes. That regeneration is also a refactor check: generate from a `git archive HEAD`
-tree and from your tree, then `diff` — identical output proves you moved no frame.
-
-## The interface tests
-
-`internal/e2e` starts the real binary in a tmux pane on a private socket, drives it with
-`send-keys` and reads it with `capture-pane`. It is the only suite that runs the program rather
-than its model, and it is not part of CI because it needs a real `tmux` and, for some cases, a
-`claude` on `PATH`:
-
-    go test -tags e2e -timeout 30m ./internal/e2e/
-
-A remote leg is skipped unless you name a host you can reach over ssh:
-
-    HUB_E2E_HOST=your-host go test -tags e2e -timeout 30m ./internal/e2e/
-
-Two rules that suite has paid for: **never run `tmux` without an explicit `-L` or `-S`** (a bare
-`tmux` command reaches your own server), and **wait for the signal your assertion is about** — the
-header paints before any poll, the tmux fleet arrives on the first tick, and agent rows arrive
-0.5–2.8 s later from a different producer.
+`display -p` runs its argument through `strftime`, so `display -p 'OK-%2'` returns
+an **empty string with rc=0**. Emit identity through the format layer:
+`display -p -t %2 'OK #{pane_id}'`. `Validate` enforces this.
 
 ## Tests
 
-- A frame test asserts on the string `View()` returns, and must fail against a stub. A screen that
-  is defined, tested and never called is this repo's signature defect, and `t.Skip` reports PASS.
-- Calibrate both ways: green on correct code, and red when you put the defect back. A guard whose
-  red half you never saw is a guard you are guessing about.
-- Assert a floor, never an exact count, for anything a scan produces — and print how many items
-  were checked, because a checker that matched nothing looks exactly like a clean run.
+    go test ./...
+    gofmt -l .        # must be empty
 
-## Releasing (maintainer)
+Tests that need a real tmux skip cleanly when it is absent. `classify()` fixtures
+require **both poles**: a waiting pane must read `needs` and a working pane must
+not.
 
-Tag and push; `.github/workflows/release.yml` builds `linux/{amd64,arm64}` and
-`darwin/{amd64,arm64}` with goreleaser and publishes the archives and checksums.
+## Priorities, as of 2026-08-11
 
-    git tag -a v0.1.0 -m "v0.1.0" && git push origin v0.1.0
-
-The Homebrew **cask** is pushed to `DawnBreather/homebrew-tap` in the same run, which needs a
-repository secret `HOMEBREW_TAP_TOKEN` — a fine-grained PAT with **Contents: read and write** on
-that tap repository only. Without the secret the release still publishes its binaries and skips
-the cask, so a missing optional token cannot fail a release.
+The concern right now is **experience** — UX, DX, DevOpsX, TerminalX, SysAdminX
+(`docs/design.md` §16). Security hardening is explicitly *not* a goal at this
+stage. The two rules above are kept anyway because they are correctness rules
+that happen to look like safety ones: `#{client_activity}` crashes a real
+server, and a bare `tmux` command edits the wrong machine's state.

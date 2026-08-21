@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/DawnBreather/tmux-hub/internal/fav"
+	"github.com/DawnBreather/tmux-hub/internal/fleetcache"
 	"github.com/DawnBreather/tmux-hub/internal/hide"
 	"github.com/DawnBreather/tmux-hub/internal/history"
 	"github.com/DawnBreather/tmux-hub/internal/hostset"
@@ -60,11 +61,18 @@ var version = "dev"
 //
 // `dev` therefore survives only where build info has nothing either — a build with no VCS
 // information at all, which reports `(devel)`.
+// readBuildInfo is `debug.ReadBuildInfo` behind a variable so that the ladder below can be TESTED.
+// It is not indirection for its own sake: under `go test` the toolchain's record carries no module
+// version, so an assertion about the fallback rung cannot fire at all — measured, a mutant that
+// walked the rung and threw its answer away passed the first version of that test. A seam the test
+// can move is the difference between asserting the ladder and asserting the environment.
+var readBuildInfo = debug.ReadBuildInfo
+
 func versionString() string {
 	if version != "dev" {
 		return version
 	}
-	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+	if bi, ok := readBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
 		return bi.Main.Version
 	}
 	return version
@@ -94,9 +102,14 @@ const (
 	// absent (§9), which is what makes a fourfold swing survivable.
 	DefaultProbeTimeout = 10 * time.Second
 
-	// ProbeConnectTimeout is ssh's own connect budget per probe, in seconds. See
-	// probeArgs for what it is worth.
-	ProbeConnectTimeout = "6"
+	// SSHConnectTimeout is ssh's own connect budget for ONE ssh to a machine in this
+	// fleet, in seconds. See probeArgs for what it is worth, and sshRemote for why the
+	// crawl needs the same number rather than one of its own: both are a TCP connect to
+	// a host on this fleet, and a second constant would be a second calibration of one
+	// measurement. Without it ssh waits out the kernel's whole SYN-retry window —
+	// measured 2026-08-20 against a black-holed address, 134.1 s bare against 6.0 s
+	// with this value, both ending in `connect to host … port 22: Connection timed out`.
+	SSHConnectTimeout = "6"
 )
 
 // hostFlags collects --host label=/path/to/socket, repeatable.
@@ -189,6 +202,7 @@ func main() {
 	stopMasters := flag.Bool("stop-masters", false,
 		"stop every ssh master under $XDG_RUNTIME_DIR/tmux-hub and exit — the way out of "+
 			"the adoption design, since a master deliberately outlives the hub")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	noLocal := flag.Bool("no-local", false, "do not watch the local tmux server")
 	logStates := flag.String("log-states", "",
 		"append every state transition to this JSONL file, to ground the timing thresholds")
@@ -206,7 +220,6 @@ func main() {
 		"which screen the hub opens on: `tree` (the fleet as a filesystem) or `flat` (the "+
 			"attention-ordered list). `t` switches at any time")
 	noFav := flag.Bool("no-favourites", false, "ignore the favourites and use the attention order alone")
-	showVersion := flag.Bool("version", false, "print the version and exit")
 
 	// The subcommand is consumed BEFORE parsing, not after. Go's flag package
 	// stops at the first non-flag argument, so `tmux-hub status --host x=/path`
@@ -227,13 +240,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "tmux-hub: unexpected argument %q — the only subcommand is `status`, and flags may go on either side of it\n", flag.Arg(0))
 		os.Exit(2)
 	}
-	// Before anything reads a socket or a file: a person who installed a released binary and is
-	// reporting a defect needs to be able to say WHICH binary, and the answer must not depend on
-	// there being a tmux server to reach.
-	if *showVersion {
-		fmt.Println("tmux-hub", versionString())
-		return
-	}
 
 	// An unknown --view is REFUSED, not ignored. `WithView` acts on one word and does nothing for
 	// any other, so a typo would silently hand the operator the screen they did not ask for — and the
@@ -247,6 +253,14 @@ func main() {
 
 	raw := tmux.NewRawRunner(MasterTimeout)
 	ops := liveMasterOps(raw)
+
+	// --version needs nothing: no host file, no fleet, no runtime directory. It is therefore the
+	// first early exit, so that a broken configuration cannot stop the operator finding out which
+	// build they are running — which is the first question any bug report needs answered.
+	if *showVersion {
+		fmt.Println("tmux-hub", versionString())
+		return
+	}
 
 	// --stop-masters answers a question the rest of the program cannot: it needs no
 	// host file, no dashboard and no fleet, because its subject is every master under
@@ -339,6 +353,16 @@ func main() {
 		favs = f
 	}
 
+	// The remembered per-machine timings, so the discovered section paints instantly and does
+	// not reorder while it is open. It NEVER fails the startup: the file holds nothing the
+	// operator decided and every figure in it is re-measured by the next probe, so an
+	// unreadable one is one round's ordering — which is why fleetcache.Open answers with a
+	// Warning instead of an error and this call cannot exit 1 the way the hidden set's does.
+	cache, cacheErr := fleetcache.Open(fleetcache.DefaultPath())
+	if cacheErr != nil {
+		fmt.Fprintln(os.Stderr, "tmux-hub: cannot open the fleet cache:", cacheErr)
+	}
+
 	ctx := context.Background()
 	// The runtime directory is needed by the picker's Stop port and by the orphan
 	// sweep. An error here is not fatal, and cannot be: hostsFor already refused to
@@ -397,6 +421,31 @@ func main() {
 			ensureMasters(ctx, built, ops)
 			return built, nil
 		},
+		// What each mounted hop declares in its OWN ~/.ssh/config, resolved on that hop. This is
+		// the whole transitive half of the fleet, and it is READS only: fleet spec §3.2 invariant
+		// 5 says nothing is ever written to a remote machine, and hostset builds no payload that
+		// could.
+		//
+		// It travels over the master the host already has, so a round costs one round trip to
+		// enumerate plus one per alias rather than a handshake each — and that is true because
+		// the argv NAMES the control path (see remoteArgs, where it was measured at 319 ms
+		// against 2458 for the same payload without it). The runtime directory is what lets it:
+		// the hop is a hosts.toml alias, so its master is at the path hostsFor built from the
+		// same two values.
+		//
+		// The context comes from the caller because the crawl bounds the whole ROUND. What is
+		// added here is not a second deadline but a bound on one TCP CONNECT, for the case the
+		// master is gone: `-S` falls back to a real handshake then, and a black-holed hop would
+		// otherwise spend more than the whole round budget by itself and starve every hop after
+		// it in the loop.
+		Behind: func(bctx context.Context, hop string) ([]hostset.Candidate, error) {
+			return hostset.RemoteCandidates(bctx, sshRemoteVia(runtimeDir), hop)
+		},
+		// The remembered timings, as a lookup and a writer over one open cache. Two ports rather
+		// than the cache itself, so internal/ui holds no path and opens no file — the same
+		// layering the four doors above keep.
+		Facts: cache.Facts,
+		Learn: cache.Record,
 	}
 
 	// The labels the fleet has already spoken for. The picker refuses a candidate that
@@ -555,7 +604,7 @@ func sshConfigPaths() (userPath, systemPath string) {
 	return filepath.Join(home, ".ssh", "config"), system
 }
 
-// probeArgs is the ssh argv for one probe, and the two options are not tuning.
+// probeArgs is the ssh argv for one probe, and none of the three flags is tuning.
 //
 // Measured on the host that set the wall time, `ssh metrics-engine 'tmux -V; id -u'`
 // takes 133.3 s bare against 6.1 s with them: BatchMode refuses to sit forever on a
@@ -563,10 +612,20 @@ func sshConfigPaths() (userPath, systemPath string) {
 // at 6 s instead of the system default's ~2 minutes. hostset.ProbeAll is concurrent,
 // so the wall IS the slowest probe — those two options are the difference between the
 // 7 s §16's promise rests on and 134 s.
+//
+// `-v` is what makes ssh print `Server host key: <type> <fingerprint>` on stderr, and
+// that fingerprint is the machine's identity — the one key that survives an alias
+// being reused, a hostname answering for four machines, and an address being a lease.
+// hostset.Probe already reads this stderr to build a remedy, so identity costs no
+// round trip; drop this flag and Result.Fingerprints goes empty, which is
+// indistinguishable from a handshake that never completed. NOT `-vv`: it multiplies
+// the output for no additional fact, and every byte of it lands in the reason a
+// failure shows the operator.
 func probeArgs(alias string, args []string) []string {
 	return append([]string{
+		"-v",
 		"-o", "BatchMode=yes",
-		"-o", "ConnectTimeout=" + ProbeConnectTimeout,
+		"-o", "ConnectTimeout=" + SSHConnectTimeout,
 		alias,
 	}, args...)
 }
@@ -579,7 +638,101 @@ func probeArgs(alias string, args []string) []string {
 // hand and handed to it is how a tmux command bypasses Validate. A probe is neither —
 // it carries no tmux argv of the hub's own making and no control path.
 func sshProbe(ctx context.Context, alias string, args ...string) (string, string, int) {
-	cmd := exec.CommandContext(ctx, "ssh", probeArgs(alias, args)...)
+	return sshStreams(ctx, probeArgs(alias, args))
+}
+
+// remoteArgs is the ssh argv for one crawl round trip, and `-S` is the whole of what
+// makes the claim its callers make TRUE.
+//
+// FIVE comments said the crawl "travels over the master the host already has, so a round
+// costs one round trip per alias rather than a handshake each" — two here, two in
+// internal/hostset/remote.go, one in internal/ui/discovered.go. It did not, and the argv
+// said so by naming no control path: `ssh -G` reports `controlmaster false` for every
+// alias on this machine and NO `controlpath` line at all, so ssh had nothing to look for.
+// The hub's masters live at hub.ControlPathFor's own paths, which no ssh config mentions —
+// that is the point of them — so the only way to ride one is to name it. Naming it is what
+// makes the other four true rather than correcting them into an admission.
+//
+// Measured 2026-08-20 against a live master on a mounted host, `echo HI` over each argv:
+//
+//	bare `ssh -o BatchMode=yes <hop>`      2458 ms   1 `Server host key`, 1 `Authenticated to`
+//	with `-S <the hub's control path>`      319 ms   0 host keys, `mux_client_request_session`
+//
+// So the sentence was false and the cost was a full handshake per alias — a hop declaring
+// twenty pays that twenty times inside a 90 s round budget. This exact argv was then run
+// against two live hops with the crawl's OWN payload, and both rode the master with no
+// host key exchanged: `side-desk` answered 2254 bytes of config in 11 ms, and `nuc` — which
+// has no ~/.ssh/config at all — came back rc=1 in 546 ms with `cat: …: No such file or
+// directory` on stderr, which is the sentence theHopSaidThereIsNoConfig reads to tell a hop
+// with nothing to offer from a hop the hub could not reach. Both halves of that
+// distinction survive the flag.
+//
+// ConnectTimeout is RESTORED, and naming the master is exactly why it is still needed:
+// `-S` does not bound anything. Measured on the same host, an ABSENT control path and a
+// STALE one (bound then abandoned, the shape master.go documents) both FALL BACK to a
+// full handshake at rc=0 — 2013 ms and 2018 ms, one `Server host key` line each — so a
+// hop whose master has died opens a real TCP connection, and the earlier comment's
+// argument for dropping the flag ("the host is already verified and already has a
+// master") was answering a question ssh does not ask. Without it a black-holed hop costs
+// 134.1 s (measured, see SSHConnectTimeout), which is longer than the crawl's whole 90 s
+// round — and since the round shares one context, that one hop starves every hop after it
+// in the loop. It costs nothing in the common case: riding the master performs no connect.
+//
+// What has NOT changed, and is a contract rather than tuning. `BatchMode=yes` stays, so
+// no round trip can sit on a password prompt nobody can see. No `-v`: this connection
+// harvests no identity, and its verbose transcript would land in a reason the operator
+// reads. And the payload stays a POSITIONAL argument, so it is handed to the far
+// account's LOGIN shell — which is exactly what hostset's payloads are written to
+// survive, since a quoted program name is a parse error at rc=0 in Nushell and that is
+// how a real host stayed invisible.
+//
+// An EMPTY control path omits `-S` rather than passing one, which is the case where
+// hub.RuntimeDir failed: `filepath.Join("", …)` is a RELATIVE path, and `-S cm-<hex>-hop`
+// would make ssh look for a master in whatever directory the hub was started from. A hop
+// with no addressable master still crawls — it pays the handshake the flag was meant to
+// save — so this degrades to the old behaviour with the timeout, not to a refusal.
+func remoteArgs(controlPath, hop, payload string) []string {
+	argv := []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=" + SSHConnectTimeout}
+	if controlPath != "" {
+		argv = append(argv, "-S", controlPath)
+	}
+	return append(argv, hop, payload)
+}
+
+// sshRemoteVia is the production hostset.RemoteRunner: it asks a hop the hub ALREADY
+// reaches about its own ssh config, over the master the hub already holds for it.
+//
+// It is built from the runtime directory rather than reading one, because the crawl's hop
+// is an alias out of hosts.toml and hostsFor derived that host's control path from the
+// same two values — `hub.ControlPathFor(dir, e.Alias)`, with the alias serving as both
+// label and ssh destination. Deriving it the same way HERE is what makes the two agree;
+// the picker's own Stop port derives it the same way for the same reason, and two
+// spellings of a control path mean the hub adopts nothing and spawns a second master.
+//
+// It passes BOTH streams through separately, which hostset.RemoteRunner's own doc makes
+// a MUST: `cat: …: No such file or directory` on stderr is the only thing that tells a
+// hop with no ssh config from a hop the hub could not reach, and both put the same
+// nothing on stdout.
+func sshRemoteVia(runtimeDir string) func(ctx context.Context, hop, payload string) (string, string, int) {
+	return func(ctx context.Context, hop, payload string) (string, string, int) {
+		control := ""
+		if runtimeDir != "" {
+			control = hub.ControlPathFor(runtimeDir, hop)
+		}
+		return sshStreams(ctx, remoteArgs(control, hop, payload))
+	}
+}
+
+// sshStreams runs one ssh and answers with its two streams and its code.
+//
+// It is shared by the two runners above so the STREAM handling has one owner — a second
+// copy is where a dropped stderr would come from, and a dropped stderr is what makes an
+// unreachable hop read as a hop with nothing to offer. The ARGV is deliberately not
+// shared: probeArgs is pinned to the literal `-v` by
+// cmd/tmux-hub/socketoverride_test.go, which reads argv off a real spawned process, and
+// folding the two argv builders would put one runner's flags on the other's connection.
+func sshStreams(ctx context.Context, argv []string) (string, string, int) {
+	cmd := exec.CommandContext(ctx, "ssh", argv...)
 	var out, errb strings.Builder
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	err := cmd.Run()

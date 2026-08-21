@@ -1,19 +1,9 @@
-# Build output
 /tmux-hub
-/dist/
 
-# Test and coverage output
-*.out
-coverage.txt
-
-# Editor and OS
-.idea/
-.vscode/
-.DS_Store
-
-# Local environment
-.env
-.env.*
-
-# Core dumps
+# rtk 0.42.0 segfaults while proxying a `go test` whose -run pattern is unquoted,
+# and drops a 564 KB core here. Observed once; the dump is the tool's, not ours.
 core.*
+
+# A live secret: whoever holds it can serve traffic for tmux-ui-draft.DawnBreather.net.
+# Recreate rather than share — see deploy/ui-draft/cloudflared/config.yml.
+deploy/ui-draft/cloudflared/credentials.json

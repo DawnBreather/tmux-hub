@@ -68,8 +68,15 @@ func (m model) restart() (tea.Model, tea.Cmd) {
 func (m model) doRestartCmd(host, paneID, sessionID, claudeSession string) tea.Cmd {
 	r, ctx, k, st := m.run, m.ctx, m.keeper, m.stamper
 	return func() tea.Msg {
-		// Build the resume command
-		cmd := "claude --resume " + claudeSession
+		// The resume command, under a login shell and held open on failure — the same wrapper the
+		// launch and the door use, for the same measured reason: the pane inherits the ssh CLIENT's
+		// environment, so on a host whose login shell puts `claude` on the path only for a login
+		// command, a bare `claude --resume …` dies with "command not found" and the respawned pane
+		// takes the message with it. LoginPayload carries the measurements.
+		cmd, err := LoginPayload([]string{"claude", "--resume", claudeSession})
+		if err != nil {
+			return restartMsg{err: err}
+		}
 
 		// Respawn the pane with the resume command
 		tgt := targetFor(m.hosts, host)

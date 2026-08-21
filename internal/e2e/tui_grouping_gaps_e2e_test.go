@@ -316,8 +316,8 @@ func TestE2EGroupingProjectViewShowsProjectLabels(t *testing.T) {
 // to docs/design.md §21.1, for KindPane: "a path not yet read is `Pending`, never `Unassigned`".
 //
 // A tmux pane always has a cwd (even HOME=/home/dev), which derives to a project (in this case,
-// "DEV" from the last path segment). "UNASSIGNED" only appears for AGENT rows that have no cwd at
+// "WON" from the last path segment). "UNASSIGNED" only appears for AGENT rows that have no cwd at
 // all, which cannot be created with tmux panes.
 //
-// Verified by running the test: the pane at HOME appeared under project header "DEV", not
+// Verified by running the test: the pane at HOME appeared under project header "WON", not
 // "UNASSIGNED". The product is correct; the test's expectation was wrong.

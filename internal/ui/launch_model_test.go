@@ -18,10 +18,18 @@ type recordingRunner struct {
 	calls    []string
 	paneID   string // what new-window returns
 	windowID string // what display returns for window_id
+
+	// argv is the same calls with their WORD BOUNDARIES kept, because `calls` joins on a space and
+	// therefore cannot answer the one question the pane's command raises: the payload is a single
+	// argument holding several spaces, so a joined line reads identically whether tmux was handed the
+	// wrapper whole or handed its words as separate arguments — and only the first of those runs.
+	// Copied, since a variadic forwarded as `args...` shares the caller's backing array.
+	argv [][]string
 }
 
 func (r *recordingRunner) Run(_ context.Context, _ tmux.Target, args ...string) (tmux.Result, error) {
 	r.calls = append(r.calls, strings.Join(args, " "))
+	r.argv = append(r.argv, append([]string(nil), args...))
 
 	// list-sessions is how a launch into a new WINDOW learns which session to put it in. `$0` used
 	// to be hard-coded there, and `$0` is only the first session a server ever had — kill it and
@@ -54,6 +62,17 @@ func (r *recordingRunner) Run(_ context.Context, _ tmux.Target, args ...string) 
 func (r *recordingRunner) RunInput(ctx context.Context, t tmux.Target, stdin []byte, args ...string) (tmux.Result, error) {
 	// For now, just delegate to Run — our launch tests don't use stdin
 	return r.Run(ctx, t, args...)
+}
+
+// argvOf is the first call for a verb, with its words intact. Named after doorTmux.argv, which
+// answers the same question for the door's fake.
+func (r *recordingRunner) argvOf(verb string) []string {
+	for _, c := range r.argv {
+		if len(c) > 0 && c[0] == verb {
+			return c
+		}
+	}
+	return nil
 }
 
 func contains(args []string, s string) bool {

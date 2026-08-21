@@ -138,6 +138,7 @@ rejection to come back.
 | **each invocation is a round trip**: one label query 501 ms, one full capture 513 ms. Issuing them separately made a tick cost 4+N round trips — measured 4.22 s for two cycles — against **1.38 s** per cycle once labels, all zones and the wanted fulls went into one batch | a tick is **two** round trips per host: the delta, then everything else |
 | `#{window_activity}` advances for an in-place spinner **on 3.2a too** (645 → 647 → 650 with `history_size` frozen at 0, while an idle pane's stayed put) | the delta-based `works` signal is not version-specific |
 | **`#{n:X}` works on 3.2a**: `#{n:session_name}` for a session named `p` returned `1`, while an unknown variable returned empty in the same invocation | the length-framed label format (§6) is safe on the older half of the fleet. This had to be measured rather than assumed, and the failure would have been total: tmux answers an unknown variable with an EMPTY field at rc=0, so on a version without `n:` every length would parse as "" and every remote host would go dark. Confirmed end to end by the remote label test against a real 3.2a host |
+| **`#{n:X}` is the STORED byte count, not the EMITTED one, and a client with no UTF-8 locale emits fewer bytes than it stores.** Measured on a macOS laptop of this fleet, tmux 3.7b, with `LANG`/`LC_ALL`/`LC_CTYPE` all unset, the value carried in a user option so the question is about the client's output path and not about one field: `abcdef` stored 6 / `n:` 6 / emitted 6 — agree; `abc—def` stored 9 / `n:` 9 / emitted **7** as `abc_def`; `abcпутьdef` stored 14 / `n:` 14 / emitted **10** as `abc____def`. One `_` byte per non-ASCII CHARACTER. With `tmux -u`, or with `LC_ALL=en_US.UTF-8` exported, all nine cells agree and every value round-trips intact; **`-u` is accepted on 3.2a as well as 3.7b**, so the fix is in band on the whole fleet with no far-side configuration | the length framing is only sound while the stream is UTF-8, so **every argv this codebase builds carries `-u`** — one constant at the one seam that assembles both branches (`forceUTF8` in `internal/tmux/run.go`), local included, since the operator's own environment can be just as empty. Untreated it took a whole host dark: the reader consumed 13 declared bytes of a 9-byte value, walked into the next field, and `parseLabelRecords` refused the record, so the footer read `<that host> down (%0/pane_start_command: value is not followed by a separator …)` and it contributed **zero** panes. It is a CLASS and not one em dash of the hub's own, because these fields carry operator data: one Cyrillic session name or one non-ASCII path segment is enough. `ssh` is how it hid — a non-interactive `ssh nuc cmd` inherits `LANG=C.UTF-8` from that host's PAM, so the older half of the fleet was already UTF-8 and never showed it |
 | `FreshFor` must exceed the tick duration, or a slow tick makes a working pane read `idle` — observed at a 2.1 s cycle with a 4 s threshold, corrected by the batching above | the freshness window belongs to the poll interval, not to a constant |
 | `window_bell_flag` is set when a pane rings the bell, and `monitor-silence` makes tmux itself flag a silent window | two attention signals tmux already computes, which the hub can read instead of deriving |
 | `allow-passthrough` defaults to **off**, so an OSC 9 desktop notification written by a pane is swallowed by tmux | an out-of-band `needs` signal cannot rely on OSC 9 (§14.2); the terminal bell and `display-message` do work |
@@ -659,6 +660,15 @@ so a pane created or destroyed between the two calls cannot mis-frame anything e
 does not line up is an **error naming the pane it broke on**, where the line-counting reader answered
 with a plausible wrong value — a session name that was really a path. `#{q:}` is not an alternative:
 it escapes `| % $ # \ ' " ;` identically on 3.2a and 3.7b, but not newlines.
+
+The length is the count of the bytes tmux **stores**, and that is the same as the bytes it **sends**
+only while the client is in UTF-8 mode. A client with no locale substitutes one `_` per non-ASCII
+character while `#{n:X}` goes on reporting the stored size, so the declared length describes a stream
+that was never sent, the reader walks into the next field, and the whole host is refused. §3 carries
+the nine-cell measurement; the consequence for this format is one flag — every argv is built with
+`-u`, at the single seam that assembles both the local and the remote branch, so nothing in the label
+reader has to know about it. That is the point of fixing it there, and it is also why the two
+comments cite each other: **the framing rule is sound only while the stream is UTF-8.**
 
 These are **not** separate invocations. Each invocation is a round trip — measured 501 ms for one
 label query against a real host — so labels, every pane's zone and the wanted full captures all go
@@ -1286,6 +1296,72 @@ hosts swing fourfold, above). Each excluded host shows its reason and its remedy
 
 Empty states are specified screens, not blank panels: no local tmux, local tmux with no server,
 no hosts enabled, host up with zero sessions.
+
+### Machines the hops declare — the section under the candidates
+
+`~/.ssh/config` answers one question: which machines does THIS machine know. Every kept host holds
+a file that answers it too, and the hub reads it — so the picker has two lists, the candidates the
+operator can tick and, under them, the machines their hops declare. The design, the measurements and
+the container harness that exercises it are in `docs/specs/2026-08-20-fleet-graph-and-harness-topology-design.md`;
+what follows is the part that is shipped and therefore binding here.
+
+A machine's row carries a **state**, and the state is the operator's next move rather than a
+health verdict. There are five, ordered here from most privileged to least:
+
+| state | what it means | the next move | shipped today |
+| --- | --- | --- | --- |
+| `mounted` | declared by this machine, verified, polled | none — the only state with nothing to do | ordering only |
+| `available` | declared and verified, not polled — today that means unticked | tick it | ordering only |
+| `ready` | verified by this machine, not yet declared by it | one tick declares it | ordering only |
+| `blocked` | a hop declares it and the resolved recipe names no credential this machine holds | the row's own remedy: `ssh-copy-id`, or bring the key here | yes |
+| `candidate` | declared somewhere, unverified, undiagnosed | probe it | yes |
+
+**The last column is not a caveat, it is the scope.** Only the root's own completed handshake makes a
+node, and a fingerprint taken through a proxy belongs to the jump host rather than to the destination
+— so a machine reachable only through a hop cannot be identified by this part at all, and the two
+states the shipped crawl produces are `candidate` and `blocked`. The other three are the ORDER the
+section will need the day a node arrives from a handshake made on a hop, and the container harness
+exercises them against real machines; nothing in the shipped path can put a row in them. The
+`available` row also once named "raise the latency budget" as its act: `internal/fleet/budget.go`
+bounds the CRAWL and says in its own words that it is not the latency budget, which is specified and
+not built, so that act named a knob no operator could turn.
+
+Three rules about that table are load-bearing. `blocked` is a **diagnosis read from the hop's
+resolved stanza**, never a failed connection — the hub cannot reach the machine to fail against it,
+which is the whole reason the row exists. `ready` means only that the recipe names no obstacle, so a
+handshake that refutes it drops the remedy, and a claimed node state that nothing has verified reads
+back as `candidate` rather than being believed. And `candidate` is the ZERO value on purpose: an
+unfilled row is the least privileged thing it could be, not the most.
+
+**Reading a hop's configuration changes nothing on the hop.** That is the guarantee, and it is about
+the FAR side: the crawl's payload only enumerates and resolves, so a machine promoted, renamed or left
+alone here is invisible to the hop that declared it, and a local override needs nobody's permission.
+On THIS side the crawl writes two files, both under the operator's own state directory — `hosts.toml`
+when a machine is ticked, and `fleet-cache.json`, which is what lets the ordering survive a restart
+without re-probing. It costs one round trip to enumerate a hop plus one per alias it resolves.
+
+Identity is the **set of ssh host-key fingerprints**, and two rows are the same machine when their
+sets intersect. It is harvested from the handshake the probe already performs, so it costs nothing —
+but **only a direct connection counts**. Measured on OpenSSH 10.x: `ssh -v -J <hop> <host>` reports
+the JUMP host's key, at every verbosity, so a proxied handshake would fuse two machines into one
+node. A machine reachable only through a proxy is therefore `blocked` with that named as the reason,
+rather than identified wrongly.
+
+The order is **tier, then latency bucket, then name**, with the observer breaking the last tie so two
+hops declaring one alias paint the same way twice. The tiers are `mounted`, then `available`, then
+everything else; the buckets are `<50ms`, `<250ms`, `<1s`, `slower` and `no timing` — bucketed rather
+than exact because two of five usable hosts swing fourfold between probes (above), so a sort on the
+raw number would reshuffle the section while the operator reads it. `no timing` is stated as a fact
+about the row, never rendered as zero.
+
+The section and the candidate list share one body, and the sharing is ruled rather than split evenly,
+because the two claimants yield differently: the candidate list **scrolls**, so a candidate pushed off
+is one `j` away, while a machine the section drops is gone until the terminal grows. In order: one
+whole machine with its remedy, then two rows for the candidate list, then half the body as the
+ordinary share — and where the candidates want less than their half, the section takes the rest
+instead of leaving it blank. Two consequences are asserted rather than hoped for: the section never
+spends a row on a heading and a `N not shown` line while naming no machine, since the heading already
+carries the total; and the machines named never DECREASE as the terminal grows.
 
 ## 10. UI
 
@@ -4540,9 +4616,8 @@ that names an action reachable by no key is this repo's signature defect.
 
 `docs/design.md:844` requires this list by name: everything §7 builds belongs to the pane path, and §22 says
 which of it moves. **This subsection number is REUSED.** Earlier drafts numbered a "what this removes from
-the earlier plan" table §22.7; that table lived in
-this section's implementation plan (an internal build artefact, not published) as a DIFFERENT
-list of seven rows, and the
+the earlier plan" table §22.7; that table now lives in
+`docs/plans/2026-08-15-reaching-paneless-sessions.md:47-59` as a DIFFERENT list of seven rows, and the
 retirements it no longer carries — `--resume`, `--teleport`, `i`/`reply`, `permission-response` and `ok:true`
 read as `delivered` — are stated in §22.1 and §22.4, which rule on them. One consequence a reader will look
 for here: the drop of `job not found — it may have already exited` as a matchable string is the plan's row
@@ -4740,7 +4815,7 @@ The colliding pair is one row `kind: background`, `state: done`, `id: 3ec21f39` 
 `kind: interactive`, `status: idle`, carrying no `id` — so `agents.Parse` back-fills `3ec21f39` from
 `sessionId[:8]` — with the SAME cwd; `Kind` is the one field that differs and the row already carries it
 (`internal/registry/registry.go`, `p.Command = s.Kind`). **The argument for `Kind` over a longer id, over the name and over detect-and-suffix
-lived in this section's implementation plan** (an internal build artefact, not published; Task 2) with the test written out,
+lives in the plan** (`docs/plans/2026-08-15-reaching-paneless-sessions.md`, Task 2) with the test written out,
 and is not repeated here; `git grep '§22\.11'` over design.md returns nothing, so nothing outside this
 document depends on the argument sitting in it.
 

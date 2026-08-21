@@ -23,23 +23,25 @@ func rec(id string, vals ...string) string {
 	return out + "\n"
 }
 
+// padLabels fills a record out to the table's width. Fixtures are written as the
+// leading fields in table order and padded here rather than listed one per field,
+// because a hand-written record silently stops lining up when the table grows — which
+// happened when three session options joined it — and the reader then reports a
+// mis-frame on a stream that is only short.
+func padLabels(vals ...string) []string {
+	for len(vals) < len(labelFormats) {
+		vals = append(vals, "")
+	}
+	return vals
+}
+
 // A value may contain the delimiter, and now also a NEWLINE. The old reader split on
 // lines and cut on the first `|`, so the pipe survived and the newline did not; the
 // length prefix makes both a non-event.
 func TestALabelValueMayContainTheDelimiterAndANewline(t *testing.T) {
-	// The values are PADDED to the table's length rather than listed one per field, so this
-	// fixture cannot go stale the way it did when three session options joined the table: a
-	// hand-written record silently stops lining up, and the reader then reports a mis-frame on
-	// a stream that is only short. The fields under test are the leading ones, in table order.
-	pad := func(vals ...string) []string {
-		for len(vals) < len(labelFormats) {
-			vals = append(vals, "")
-		}
-		return vals
-	}
 	got, err := parseLabelRecords(
-		rec("%0", pad("my|session", "w|x", "sleep", `sh -c "tail -f log | grep boom"`, "/a|b/c")...) +
-			rec("%3", pad("plain", "win", "bash", "", "/tmp/пу|ть\nвторой")...))
+		rec("%0", padLabels("my|session", "w|x", "sleep", `sh -c "tail -f log | grep boom"`, "/a|b/c")...) +
+			rec("%3", padLabels("plain", "win", "bash", "", "/tmp/пу|ть\nвторой")...))
 	if err != nil {
 		t.Fatalf("parseLabelRecords: %v", err)
 	}
@@ -107,6 +109,98 @@ func TestAMisframedStreamIsAnErrorAndNotData(t *testing.T) {
 		if _, err := parseLabelRecords(c.in); err == nil {
 			t.Errorf("%s: parsed without error, want a refusal", c.name)
 		}
+	}
+}
+
+// The framing rule assumes ONE thing about the transport, and dev-air broke it: a tmux
+// client with no UTF-8 locale downgrades its own output, substituting one `_` byte per
+// non-ASCII CHARACTER, while `#{n:X}` goes on reporting the STORED byte count. The
+// lengths then describe a stream that was never sent.
+//
+// Measured on dev-air 2026-08-20, tmux 3.7b, LANG/LC_ALL/LC_CTYPE all unset, the values
+// carried in a user option so the question is about the client's OUTPUT PATH and not
+// about one field:
+//
+//	abcdef      stored  6  n: 6  emitted  6  agree
+//	abc—def     stored  9  n: 9  emitted  7  `abc_def`     overrun
+//	abcпутьdef  stored 14  n:14  emitted 10  `abc____def`  overrun
+//
+// With `tmux -u`, or with LC_ALL set, all nine cells agree and every value round-trips.
+// Untreated it took a whole host dark, in the operator's own words:
+// `dev-air down (%0/pane_start_command: value is not followed by a separator …)`.
+//
+// Two poles, because either half alone is not a fix. The READER must refuse a downgraded
+// stream rather than read it as data — a session name that is really half a path is the
+// one outcome worse than the outage, and it is what the line-counting reader used to do.
+// The WIRE must then not produce one, which is what makes the first pole unreachable:
+// every argv this package builds carries -u. See forceUTF8 in run.go.
+//
+// It is a CLASS and not one em dash of the hub's own: the fields carry operator data, so
+// a Cyrillic session name or one non-ASCII path segment is enough.
+func TestADowngradedStreamIsRefusedAndTheWireIsWhatPreventsIt(t *testing.T) {
+	// The bytes tmux stores, and the bytes a locale-less client emits for them. Asserted
+	// rather than assumed, so the fixture cannot quietly become ASCII and test nothing.
+	const stored, downgraded = "/tmp/путь", "/tmp/____"
+	if len(stored) != 13 || len(downgraded) != 9 {
+		t.Fatalf("the fixture must differ in LENGTH to reproduce the defect: %d vs %d",
+			len(stored), len(downgraded))
+	}
+
+	honest := rec("%0", padLabels("s", "w", "c", "", stored)...)
+	got, err := parseLabelRecords(honest)
+	if err != nil {
+		t.Fatalf("a UTF-8 stream must parse — this is what -u buys: %v", err)
+	}
+	if got["%0"].Path != stored {
+		t.Errorf("Path = %q, want %q", got["%0"].Path, stored)
+	}
+
+	// The same record as a locale-less client sends it: only the BODY shrinks, the length
+	// beside it still says 13. That desync is the entire defect.
+	broken := strings.Replace(honest, stored, downgraded, 1)
+	if broken == honest {
+		t.Fatal("the substitution did not fire, so the arm below tests nothing")
+	}
+	got, err = parseLabelRecords(broken)
+	if err == nil {
+		t.Fatalf("a downgraded stream parsed without error: %#v", got)
+	}
+	if got != nil {
+		t.Errorf("a mis-framed stream must yield NO records, got %#v", got)
+	}
+	// The message the operator reads. It has to name the pane and the field, because the
+	// alternative is a host going dark with nothing to grep for.
+	for _, want := range []string{"%0", "pane_current_path", "separator"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must name %q, got: %v", want, err)
+		}
+	}
+
+	// The wire half. Position is pinned by the exact-argv assertions in run_test.go and
+	// tmuxargs_test.go; what this arm states is that BOTH branches carry the flag at all,
+	// with the reason attached — the local client's locale is the operator's environment
+	// and can be just as empty as dev-air's.
+	r := NewExec(time.Second).(*execRunner)
+	local, err := r.build(Target{Label: "local", Socket: "/tmp/s"}, []string{"list-panes", "-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The LITERAL, not forceUTF8: comparing against the constant would make a mutant that
+	// blanks the constant pass, which is the whole shape of a test that imports its own
+	// expected value.
+	if len(local) < 2 || local[1] != "-u" {
+		t.Errorf("the local argv does not force UTF-8, so any non-ASCII label mis-frames the "+
+			"whole poll: %q", local)
+	}
+	remote, err := r.build(
+		Target{Label: "nuc", SSHDest: "nuc", ControlPath: "/run/cm-nuc"},
+		[]string{"list-panes", "-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload := remote[len(remote)-1]; !strings.Contains(payload, "'-u'") {
+		t.Errorf("the remote payload does not force UTF-8, which is the branch that took "+
+			"dev-air down: %q", payload)
 	}
 }
 

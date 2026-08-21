@@ -85,6 +85,15 @@ var labelFormats = []struct {
 // measured, a 42-byte 32-rune path reported 42 — so the reader consumes exactly
 // those bytes and never looks for a boundary the value could forge.
 //
+// THE LENGTH IS THE STORED SIZE, NOT THE EMITTED SIZE, and those differ for a client
+// with no locale: tmux then substitutes one `_` per non-ASCII CHARACTER, so a 9-byte
+// value came out as 7 bytes with `n:` still saying 9, the reader walked into the next
+// field, and the host went dark with the error below. Measured on dev-air 2026-08-20;
+// the table and the fix are on `forceUTF8` in run.go, which puts `-u` on every
+// invocation this package builds. Nothing here needs to know about it — that is the
+// point of fixing it at the seam — but the framing rule is only sound while the
+// stream is UTF-8, so the two comments belong to each other.
+//
 // Which values can actually carry a newline, measured on tmux 3.7b:
 //
 //	session_name        refused    `invalid session name: a\nb`

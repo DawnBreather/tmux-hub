@@ -264,6 +264,21 @@ type model struct {
 	// would spend 7.65 s of ssh re-answering a question the file already answers.
 	pickerAutoProbe bool
 
+	// store is the fleet as a GRAPH (internal/fleet), and it is a POINTER on purpose: the
+	// crawl behind the hops runs in a tea.Cmd body while Update reads the same graph to
+	// draw, so every copy of this model must share one graph and one lock. The type is
+	// what holds the lock — see fleetStore in discovered.go, and CLAUDE.md's rule about
+	// the poll that lost a whole round's status writes with `-race` green throughout.
+	//
+	// It is nil for any model a fixture built rather than an option, so every READ path
+	// through it is nil-safe and a nil store reads as an empty fleet.
+	store *fleetStore
+	// discovered is the picker's discovered section: the machines the hops declare, with
+	// the one command that would make each mountable. Derived from `store` plus the
+	// remembered timings, and rebuilt whenever either changes rather than at paint time,
+	// because the ORDER must not move while the operator is reading it.
+	discovered []DiscoveredRow
+
 	run     tmux.Exec
 	sender  *broadcast.Sender
 	stamper *broadcast.Stamper
@@ -1580,6 +1595,11 @@ func WithView(name string) Option {
 func WithPicker(ports PickerPorts, kept []hostset.Entry, reserved []string, open bool) Option {
 	return func(m *model) {
 		m.pickerPorts, m.pickerReserved = ports, reserved
+		// The graph is made HERE and nowhere else, so there is exactly one per running hub and
+		// therefore exactly one lock. Made unconditionally, not when a port happens to be set: a
+		// second maker is what would give two model copies two graphs, and the crawl's own refusal
+		// already covers a hub with no way to look behind a hop.
+		m.store = newFleetStore()
 		*m = m.withKept(kept)
 		if open {
 			// THROUGH `raise`, so the screen underneath is recorded rather than assumed. Setting the
@@ -2420,7 +2440,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modePicker {
 			m.note = fmt.Sprintf("asked %s", plural(len(fresh), "candidate", "candidates"))
 		}
+		// The round measured a round trip per host, and that figure is what the discovered
+		// section is ordered by — remembered here so the next opening paints in the same
+		// order without waiting for a probe. See learnFromProbe for why the key is the
+		// root's own alias rather than the fingerprint the same round harvested.
+		m = m.learnFromProbe(msg.results, time.Now())
 		return m, nil
+
+	case discoveredMsg:
+		return m.discoveredArrived(msg)
 
 	case pickerSavedMsg:
 		if msg.err != nil {
@@ -2864,6 +2892,22 @@ func (m model) launch(spec launch.Spec) tea.Cmd {
 				"so there is nowhere to create a window", spec.Host)}
 		}
 
+		// Step 3b: Wrap the argv for the pane.
+		//
+		// A pane inherits the tmux CLIENT's environment, and the hub's client on a remote host is
+		// `ssh <host> tmux …` — a NON-INTERACTIVE command, whose PATH on dev-air does not include the
+		// directory `claude` lives in. The bare argv therefore died with "command not found", nothing
+		// held the pane, tmux destroyed pane → window → session, and step 5 below read the empty
+		// string a `display -p` for a gone pane returns at rc=0: the operator was shown
+		// `invalid window id: ""` for a missing PATH. LoginPayload carries the measurements.
+		//
+		// The refusal is surfaced rather than swallowed: it can only fire for an argument no shell
+		// could be given as a plain word, and it names which one.
+		payload, err := LoginPayload(plan.Argv)
+		if err != nil {
+			return launchMsg{err: fmt.Errorf("build the pane's command: %w", err)}
+		}
+
 		// Step 4: Create the window or session
 		//
 		// usedName is the session name that actually landed and `renamed` says it is not the one the
@@ -2883,10 +2927,10 @@ func (m model) launch(spec launch.Spec) tea.Cmd {
 			// ONE retry always succeeds; §22.3's door names its sessions the same way, through the
 			// same function.
 			usedName = spec.SessionName
-			paneID, err = tmux.NewSession(ctx, run, target, usedName, spec.CWD, plan.Command)
+			paneID, err = tmux.NewSession(ctx, run, target, usedName, spec.CWD, payload)
 			if tmux.IsDuplicateSession(err) {
 				usedName = launch.SessionNameWithID(spec.SessionName, id)
-				paneID, err = tmux.NewSession(ctx, run, target, usedName, spec.CWD, plan.Command)
+				paneID, err = tmux.NewSession(ctx, run, target, usedName, spec.CWD, payload)
 				renamed = err == nil
 			}
 		} else {
@@ -2911,7 +2955,7 @@ func (m model) launch(spec launch.Spec) tea.Cmd {
 				return launchMsg{err: fmt.Errorf("%s has no tmux session to put a window in — "+
 					"choose \"a new session\" instead", spec.Host)}
 			}
-			paneID, err = tmux.NewWindow(ctx, run, target, sess, spec.CWD, plan.Command)
+			paneID, err = tmux.NewWindow(ctx, run, target, sess, spec.CWD, payload)
 		}
 		if err != nil {
 			return launchMsg{err: fmt.Errorf("create pane: %w", err)}
@@ -2927,6 +2971,16 @@ func (m model) launch(spec launch.Spec) tea.Cmd {
 		}
 		windowID := strings.TrimSpace(res.Stdout)
 		if windowID == "" || !strings.HasPrefix(windowID, "@") {
+			// An EMPTY answer at rc=0 is what tmux gives for a pane that no longer exists — measured,
+			// `display -p -t <gone pane> '#{window_id}'` is rc=0 with no output — so the sentence names
+			// that rather than quoting an empty string. It is the shape a payload which exits
+			// immediately produces, and the login wrapper (step 3b) is what stops it happening: the
+			// wrapper stays in the foreground, so a pane cannot be gone by the time this read lands.
+			if windowID == "" {
+				return launchMsg{paneID: paneID, host: spec.Host, session: usedName, renamed: renamed,
+					err: fmt.Errorf("%s is already gone, so its command must have exited at once — "+
+						"run it in a terminal on %s to see why", paneID, spec.Host)}
+			}
 			return launchMsg{paneID: paneID, host: spec.Host, session: usedName, renamed: renamed, err: fmt.Errorf("invalid window id: %q", windowID)}
 		}
 
@@ -3379,7 +3433,7 @@ func (m model) View() string {
 		// Drawing the dashboard above the rule for an operator who was on another screen is the defect
 		// an adversarial review found in the naming overlay one screen over.
 		out := strings.Split(backdrop(f.withHeight(baseH).withNote(note).withAside(m.pickerWarn)), "\n")
-		out = append(out, RenderPicker(m.picker, m.width, bodyH, m.pickerCursor)...)
+		out = append(out, RenderPicker(m.picker, m.discovered, m.width, bodyH, m.pickerCursor)...)
 		return joinToHeight(out, m.height)
 	default:
 		return Render(f.withNote(note))

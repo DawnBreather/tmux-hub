@@ -193,7 +193,7 @@ func TestE2EUILaunchIntoANewSessionWhoseNameIsTaken(t *testing.T) {
 	})
 	var extra string
 	for _, n := range f.sessionNames(t) {
-		if strings.HasPrefix(n, "gs-") {
+		if strings.HasPrefix(n, "st-") {
 			extra = n
 		}
 	}
@@ -203,8 +203,8 @@ func TestE2EUILaunchIntoANewSessionWhoseNameIsTaken(t *testing.T) {
 	// The fallback is `<dir>-<short id>`: the uuid the launch already generates for
 	// `claude --session-id`, so it is unique by construction and one retry always succeeds. A
 	// counter would need a bound and a probe; this needs neither.
-	if len(extra) != len("gs-")+8 {
-		t.Errorf("the fallback name is %q, want gs- plus an 8-character id", extra)
+	if len(extra) != len("st-")+8 {
+		t.Errorf("the fallback name is %q, want st- plus an 8-character id", extra)
 	}
 
 	// And the operator is TOLD, because a session they did not name is a session they cannot find.

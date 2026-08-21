@@ -89,7 +89,7 @@ func monotonicCases(t *testing.T) []widthCase {
 			}},
 		{"picker", []string{"nuc", "staging-2", "orbits.example"},
 			func(cols int) string {
-				return strings.Join(RenderPicker(pickerRows, cols, 24, 0), "\n")
+				return strings.Join(RenderPicker(pickerRows, nil, cols, 24, 0), "\n")
 			}},
 	}
 }

@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/DawnBreather/tmux-hub/internal/fleetcache"
 	"github.com/DawnBreather/tmux-hub/internal/hostset"
 	"github.com/DawnBreather/tmux-hub/internal/hub"
 	"github.com/DawnBreather/tmux-hub/internal/lines"
@@ -191,6 +193,41 @@ type PickerPorts struct {
 	// path and adopting a master are ssh concerns and a screen must not hold them. The
 	// hosts come back ready to poll; the model only decides which of them are new.
 	Enable func(kept []hostset.Entry) ([]hub.Host, error)
+
+	// Behind asks one hop what machines its OWN ssh config declares, resolved on that
+	// hop. In production: hostset.RemoteCandidates over the master the host already
+	// has.
+	//
+	// It is a port and not a call because reading another machine's file is ssh's
+	// business and a screen must not hold an argv — and because a test that had to
+	// bring up two machines to prove a remedy string would not get written. It takes a
+	// context, unlike the three above, because a round costs one round trip per alias
+	// and the crawl bounds the whole round rather than each leg.
+	//
+	// NOTHING IS EVER WRITTEN OUTWARD (fleet spec §3.2 invariant 5): every payload
+	// behind this door is a read, which is enforced by there being no other kind of
+	// payload rather than by a rule somebody has to remember.
+	//
+	// A nil port is a hub that cannot look behind a hop, and the screen SAYS so
+	// (crawlRefusal) rather than showing an empty section — "there is nothing back
+	// there" and "nobody asked" are different facts.
+	Behind func(ctx context.Context, hop string) ([]hostset.Candidate, error)
+
+	// Facts and Learn are the remembered per-machine measurements — internal/fleetcache
+	// — as a lookup and a writer. In production both close over one open cache.
+	//
+	// They are TWO ports rather than the cache itself so this package neither opens a
+	// file nor holds a path, which is the same layering the three doors above keep. And
+	// they are the reason the discovered list paints instantly and DOES NOT MOVE while
+	// it is open: measured on the live fleet, one host's probe answered at 5.4 s, 9.1 s,
+	// 15.7 s and 18.4 s, so an order taken from a live figure reorders between two
+	// openings of the same screen.
+	//
+	// Both nil is a hub that remembers nothing, which orders the section by name inside
+	// one bucket — the ordinary order, which is the order the operator would have had
+	// anyway.
+	Facts func(fleetcache.Key) (fleetcache.Facts, bool)
+	Learn func(map[fleetcache.Key]fleetcache.Facts) error
 }
 
 // PickerRowsFor turns one probe round into the rows the picker shows. It is the ONE
@@ -634,7 +671,7 @@ func pickerLayout(blocks [][]string, cursor, budget int) (first, count int) {
 // It is padded rather than left short because a footer that floats is a footer nobody
 // finds: measured before, four candidates put the key line on row 21 of 24 with three
 // blank rows under it.
-func RenderPicker(rows []PickerRow, width, height, cursor int) []string {
+func RenderPicker(rows []PickerRow, discovered []DiscoveredRow, width, height, cursor int) []string {
 	head := []string{separator(width), lines.Truncate(pickerCount(rows), width), ""}
 	foot := []string{"", lines.Truncate(
 		"space: keep this host · enter: save and connect · esc: cancel · r: probe again", width)}
@@ -644,8 +681,30 @@ func RenderPicker(rows []PickerRow, width, height, cursor int) []string {
 	}
 
 	blocks := make([][]string, len(rows))
+	wanted := 0
 	for i, r := range rows {
 		blocks[i] = pickerBlock(r, width, i == cursor)
+		wanted += len(blocks[i])
+	}
+
+	// The discovered section is sized against what the CANDIDATE LIST actually needs, and then the
+	// list gets what is left. Both halves of that order are deliberate.
+	//
+	// The section is sized by asking the one function that draws it, twice, rather than by arithmetic
+	// about its shape: a second copy of "how tall is a machine's block" would drift the day a row
+	// gains a field. And `wanted` is passed in because the two claimants yield differently — a
+	// candidate the list cannot show is one `j` away, while a machine the section drops is gone until
+	// the terminal grows — so on a screen where the candidates do not need their half, the section may
+	// have the rest instead of leaving it blank. Measured before it did: at 120×40 with two candidates
+	// the section reported `1 machine not shown` above seven empty rows.
+	full := RenderDiscovered(discovered, width, budget)
+	section := full
+	if room := discoveredRoom(len(full), discoveredNeed(discovered, width), budget, wanted); room < len(full) {
+		section = RenderDiscovered(discovered, width, room)
+	}
+	budget -= len(section)
+	if budget < 1 {
+		return joinBlocks(head, section, foot, height)
 	}
 
 	// The "how much is left" line costs a row, so the budget is asked twice: once with
@@ -654,7 +713,18 @@ func RenderPicker(rows []PickerRow, width, height, cursor int) []string {
 	// list SCROLLS — and it has to say so, or the cursor walks off the screen exactly
 	// as it did in the inbox before §16's fix.
 	first, count := pickerLayout(blocks, cursor, budget-1)
-	if count == len(rows) {
+	marker := true
+	switch {
+	case count == 0:
+		// The reserved row was the ONLY row. A body holding nothing but `↓ 12 more · j/k to move`
+		// names no candidate and tells the operator to press `j` on a list showing none, while the row
+		// the cursor stands on is what `space` and `enter` act on — so the row goes to the candidate
+		// and the marker goes with it, the heading already carrying the total. Measured at 80x6, where
+		// head and foot leave the body exactly one line.
+		first, count = pickerLayout(blocks, cursor, budget)
+		marker = false
+	case count == len(rows):
+		// Everything fits, so there is nothing to mark and the reserved row returns to the list.
 		first, count = pickerLayout(blocks, cursor, budget)
 	}
 
@@ -663,7 +733,14 @@ func RenderPicker(rows []PickerRow, width, height, cursor int) []string {
 		body = append(body, blocks[i]...)
 	}
 	above, below := first, len(rows)-(first+count)
+	// The scroll marker earns its row only once a candidate is drawn beside it. With `count == 0`
+	// it restates the heading — which already says how many candidates there are — and names none of
+	// them, which is the same defect the discovered section had at height 1 and the same class this
+	// repository records as "keep the label, lose the action". Found by the height sweep in
+	// TestThePickerSharesItsBodyWithTheSectionAndKeepsTheCursor: at 80x6 the body has exactly one row
+	// and it went to `↓ 12 more · j/k to move` — a direction to press `j` on a list showing nothing.
 	switch {
+	case !marker || count == 0:
 	case above > 0 && below > 0:
 		body = append(body, fmt.Sprintf("  ↑ %d above · ↓ %d more · j/k to move", above, below))
 	case below > 0:
@@ -671,6 +748,9 @@ func RenderPicker(rows []PickerRow, width, height, cursor int) []string {
 	case above > 0:
 		body = append(body, fmt.Sprintf("  ↑ %d more above · j/k to move", above))
 	}
+	// The section goes UNDER the candidates: the tick boxes are what the operator came here for, and
+	// a block that pushed them down the screen would put the subject of the screen below the fold.
+	body = append(body, section...)
 	return joinBlocks(head, body, foot, height)
 }
 
@@ -781,12 +861,24 @@ func (m model) openPicker() (tea.Model, tea.Cmd) {
 	m.note = ""
 	m = m.raise(modePicker)
 	m = m.clampPickerCursor()
+
+	// The crawl behind the hops runs on every opening, and it is BATCHED beside the probe rather than
+	// chained after it: the two ask different machines different questions, and a crawl that waited
+	// for a ten-host probe round would arrive minutes after the screen it belongs to. Neither gates
+	// the paint (§16 promises a first paint in 50 ms).
+	var cmds []tea.Cmd
 	if len(m.picker) == 0 && m.pickerPorts.Probe != nil && !m.pickerBusy {
 		m.pickerBusy = true
 		m.note = "asking every candidate in ~/.ssh/config — this takes as long as the probe timeout"
-		return m, m.probeHosts()
+		cmds = append(cmds, m.probeHosts())
 	}
-	return m, nil
+	if crawl := m.crawlBehind(); crawl != nil {
+		cmds = append(cmds, crawl)
+	}
+	if len(cmds) == 0 {
+		return m, nil
+	}
+	return m, tea.Batch(cmds...)
 }
 
 // probeHosts runs one round off the UI goroutine. Probing can never gate the screen:

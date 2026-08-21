@@ -174,13 +174,14 @@ func TestAnInvalidPathStillSaysWhy(t *testing.T) {
 // row then draws as `nuc/%0 %0` and `tmux attach -t <name>` has nothing to take. The hub's own `a`
 // was never affected, because it targets the session ID.
 func TestALaunchIntoANewSessionCarriesAName(t *testing.T) {
-	// A real directory the test OWNS: `launch.Spec.Validate` stats the cwd (`internal/launch/launch.go`),
-	// so a hard-coded path passes only on a machine that happens to have it — this case used to name one
-	// and would have failed on any other, CI included. The last segment is what the assertion is about,
-	// so it is named rather than left to `t.TempDir()`'s counter.
+	// A real directory the TEST owns. `launch.Spec.Validate` stats the cwd, so a literal path from
+	// somebody's disk makes a green run a property of THAT MACHINE — this one passed here and failed
+	// everywhere else, which is recorded in this repo's journal and was fixed in the published mirror
+	// alone until now. The last segment is what the assertion below is about, so it is NAMED rather
+	// than left to `t.TempDir()`'s counter.
 	dir := filepath.Join(t.TempDir(), "st")
 	if err := os.Mkdir(dir, 0o755); err != nil {
-		t.Fatal(err)
+		t.Fatalf("the fixture could not make the directory the form is given: %v", err)
 	}
 	f := launchFormAt(t, dir)
 	f.destIndex = 1 // a new session

@@ -604,12 +604,39 @@ func TestE2ETheDefaultLaunchPathCreatesAWindowWhereTheCursorIs(t *testing.T) {
 		t.Errorf("the default launch path failed:\n%s", s)
 	}
 
-	// And the window really is in a session that exists, running claude.
-	waitUntil(t, "the claude pane to exist on the watched server", 20*time.Second, func() bool {
-		out, err := exec.Command("tmux", "-S", target, "list-panes", "-a", "-F",
-			"#{session_name} #{pane_current_command}").Output()
-		return err == nil && strings.Contains(string(out), "claude")
-	})
+	// And the window really is in the SURVIVING session, running claude.
+	//
+	// The needle is `#{pane_start_command}`, and this used to read `#{pane_current_command}`. The
+	// launch payload is `ui.LoginPayload`'s `sh -lc "claude … || { echo; …; read x; }"`, and the
+	// `||` is why the field moved: a lone command lets `sh` EXEC it, but a command with an `||`
+	// arm cannot be exec'd, so the wrapper shell stays in the foreground and tmux reports `sh` for
+	// as long as claude runs. Measured on 3.7b in one invocation — `sh -lc "sleep 300"` reports
+	// `sleep`, the same payload with `|| { … }` reports `sh`. So the old needle was an assertion
+	// about the SPAWN SHAPE rather than about the launch, and it went red when the payload gained
+	// its login shell while every property this case exists for still held.
+	//
+	// `pane_start_command` is set by the create and does not change as processes come and go, and
+	// the payload is ONE argv word, so tmux quotes it once and the argv survives inside as a
+	// contiguous substring (measured: `"sh -lc \"claude --session-id … || { … }\""`). That is the
+	// same field `registry.doorPayload` parses, and for the same reason.
+	//
+	// The SESSION NAME is asserted too, which the old form did not do at all: the defect this case
+	// pins is a window put into a hard-coded `$0`, so which session ended up holding it is the
+	// whole point, and "some pane somewhere is running claude" could not see it.
+	waitUntil(t, "the launched claude pane to exist in the surviving session", 20*time.Second,
+		func() bool {
+			out, err := exec.Command("tmux", "-S", target, "list-panes", "-a", "-F",
+				"#{session_name} #{pane_start_command}").Output()
+			if err != nil {
+				return false
+			}
+			for _, line := range strings.Split(string(out), "\n") {
+				if strings.HasPrefix(line, "later ") && strings.Contains(line, "claude") {
+					return true
+				}
+			}
+			return false
+		})
 }
 
 // A host with NO tmux server has nowhere to put a window, and the refusal has to name the way out.

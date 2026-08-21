@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/DawnBreather/tmux-hub/internal/fleet"
 	"github.com/DawnBreather/tmux-hub/internal/hostset"
 	"github.com/DawnBreather/tmux-hub/internal/hub"
 	"github.com/DawnBreather/tmux-hub/internal/lines"
@@ -915,7 +916,7 @@ func TestASavedHostJoinsTheFleetWithoutARestart(t *testing.T) {
 			// deciding which are new is the model's job.
 			return []hub.Host{
 				{Label: "nuc", SSHDest: "nuc"},
-				{Label: "eu", SSHDest: "eu", ControlPath: "/run/user/1000/cm-kg"},
+				{Label: "eu", SSHDest: "eu", ControlPath: "/run/user/1000/cm-eu"},
 			}, nil
 		},
 	}
@@ -990,7 +991,7 @@ func TestASavedHostIsRegisteredWithThePollerAndSurvivesATick(t *testing.T) {
 	m.pickerPorts = PickerPorts{
 		Save: func([]hostset.Entry) error { return nil },
 		Enable: func([]hostset.Entry) ([]hub.Host, error) {
-			return []hub.Host{{Label: "eu", Socket: "/tmp/tmux-hub-test-kg.sock"}}, nil
+			return []hub.Host{{Label: "eu", Socket: "/tmp/tmux-hub-test-eu.sock"}}, nil
 		},
 	}
 	got := enterAndConnect(t, m)
@@ -1017,8 +1018,8 @@ func TestASavedHostIsRegisteredWithThePollerAndSurvivesATick(t *testing.T) {
 func TestAHostTurnedOffLeavesTheFleetAndStaysGone(t *testing.T) {
 	f := newFakeTmux("%0")
 	m := builtModel(t, f, nil, livePane("%0", "work"))
-	m.poller.Add(hub.Host{Label: "eu", Socket: "/tmp/tmux-hub-test-kg.sock"})
-	m.hosts = append(m.hosts, hub.Host{Label: "eu", Socket: "/tmp/tmux-hub-test-kg.sock"})
+	m.poller.Add(hub.Host{Label: "eu", Socket: "/tmp/tmux-hub-test-eu.sock"})
+	m.hosts = append(m.hosts, hub.Host{Label: "eu", Socket: "/tmp/tmux-hub-test-eu.sock"})
 	m.mode = modePicker
 	m.picker = []PickerRow{{Alias: "eu", Version: "3.2a", Usable: true, Enabled: true, Kept: true}}
 	m = m.withKept([]hostset.Entry{{Alias: "eu", Enabled: true}})
@@ -1532,7 +1533,7 @@ func TestALongAliasDoesNotRunIntoItsReason(t *testing.T) {
 		{Alias: "orbits.github.com", Usable: false,
 			Reason: "not a shell host — this is a git remote, so there is nothing to poll"},
 	}
-	out := strings.Join(RenderPicker(rows, 110, 24, 0), "\n")
+	out := strings.Join(RenderPicker(rows, nil, 110, 24, 0), "\n")
 	for _, line := range strings.Split(out, "\n") {
 		if !strings.Contains(line, "orbits.github.com") {
 			continue
@@ -1563,7 +1564,7 @@ func TestTheAliasColumnAlignsByDisplayWidth(t *testing.T) {
 		{Alias: "中文", Kept: true, Usable: true, Version: "3.7b"},
 		{Alias: "abcd", Kept: true, Usable: true, Version: "3.7b"},
 	}
-	out := RenderPicker(rows, 110, 24, 0)
+	out := RenderPicker(rows, nil, 110, 24, 0)
 	var cols []int
 	for _, line := range out {
 		if i := strings.Index(line, "tmux 3.7b"); i >= 0 {
@@ -1666,5 +1667,116 @@ func TestThePickerFooterMarksOnceNotTwice(t *testing.T) {
 	}
 	if lines.Width(foot) > 80 {
 		t.Errorf("the footer is %d wide: %q", lines.Width(foot), foot)
+	}
+}
+
+// THE SECTION REACHED THE PICKER ONLY UNDER A BUILD TAG. Every default-suite call of `RenderPicker`
+// passed `nil` for the discovered rows, so `discoveredRoom` and `discoveredNeed` — the arithmetic
+// that shares one body between two claimants — were exercised by the e2e suite alone, which the
+// default gates cannot see. That is this repository's signature defect (a screen that is defined,
+// tested and never called) one argument along, and a verifier found it rather than a gate.
+//
+// The sweep is the assertion, and every clause in it is a property rather than a frame: nothing may
+// exceed the box, the CURSOR must stay on the screen (the tick boxes are the screen's subject), the
+// section may never spend rows without naming a machine, and naming must be MONOTONE in height —
+// the class this repository already has a rule against, arrived at from the other axis.
+//
+// One thing measured here is deliberately NOT asserted: the candidate count is not monotone, and it
+// should not be. At 80×24 it walks 4 → 1 as the section becomes affordable at height 11, and dips
+// again at 17, 21, 25 and 29 as the section earns another machine. Both are the design's stated
+// asymmetry — the list SCROLLS and the section does not, so a candidate pushed off is one `j` away
+// while a machine dropped is gone until the terminal grows — and the row the list loses is spent on
+// the marker that says so. Asserting monotonicity there would forbid the ruling.
+func TestThePickerSharesItsBodyWithTheSectionAndKeepsTheCursor(t *testing.T) {
+	var rows []PickerRow
+	for i := 0; i < 12; i++ {
+		rows = append(rows, PickerRow{Alias: fmt.Sprintf("cand%02d", i), Usable: true, Version: "3.2a"})
+	}
+	var disc []DiscoveredRow
+	for i := 0; i < 6; i++ {
+		disc = append(disc, DiscoveredRow{
+			Label: fmt.Sprintf("leaf%02d", i), Observer: "hop", State: fleet.Blocked,
+			Reason: "run `ssh-copy-id dev@leaf`, or copy ~/.ssh/hop-only to this machine"})
+	}
+
+	namedAt := map[int]int{}
+	for h := 6; h <= 34; h++ {
+		out := RenderPicker(rows, disc, 80, h, 0)
+		screen := strings.Join(out, "\n")
+		if len(out) > h {
+			t.Fatalf("height %d drew %d lines, which overruns the terminal", h, len(out))
+		}
+		// The cursor is on cand00. A screen that cannot show the row the operator is standing on is
+		// a screen where `space` and `enter` act on something invisible.
+		if !strings.Contains(screen, "cand00") {
+			t.Errorf("height %d lost the cursor row:\n%s", h, screen)
+		}
+		// And the key line lands on the LAST row, which is `joinBlocks`'s whole promise. This clause
+		// was added because it is the one a mutant needed: restoring the scroll marker at `count == 0`
+		// leaves the cursor row on the screen and pushes the footer off the bottom instead, so a
+		// terminal that is one row short loses the way OUT of the overlay rather than a candidate.
+		if last := out[len(out)-1]; !strings.Contains(last, "esc: cancel") {
+			t.Errorf("height %d ends on %q rather than the key line:\n%s", h, last, screen)
+		}
+		named := 0
+		for i := 0; i < 6; i++ {
+			if strings.Contains(screen, fmt.Sprintf("leaf%02d", i)) {
+				named++
+			}
+		}
+		namedAt[h] = named
+		if named == 0 && strings.Contains(screen, "Behind your hops") {
+			t.Errorf("height %d spends rows on the section while naming no machine:\n%s", h, screen)
+		}
+		if named > 0 && !strings.Contains(screen, "Behind your hops") {
+			t.Errorf("height %d names a machine with no heading to say what it is:\n%s", h, screen)
+		}
+	}
+	for h := 7; h <= 34; h++ {
+		if namedAt[h] < namedAt[h-1] {
+			t.Errorf("height %d names %d machines where %d named %d — a taller terminal showing less",
+				h, namedAt[h], h-1, namedAt[h-1])
+		}
+	}
+	// And a positive assertion, because every clause above is satisfied by a picker that draws no
+	// section at all: at the one size §16 commits to, the section is THERE.
+	at80 := strings.Join(RenderPicker(rows, disc, 80, 24, 0), "\n")
+	if !strings.Contains(at80, "Behind your hops") || !strings.Contains(at80, "leaf00") {
+		t.Errorf("80x24 — the committed size — drew no discovered section:\n%s", at80)
+	}
+}
+
+// discoveredRoom's four branches, each with the case that reaches it. The arithmetic had no direct
+// test: it was reachable only through `RenderPicker`, which every default-suite call fed `nil`.
+//
+// The expectations are derived from the rule in the function's own comment — whole machine first,
+// then the candidate floor, then half the body — and not from a previous run.
+func TestTheSectionsShareOfTheBodyIsRuledRatherThanGuessed(t *testing.T) {
+	cases := []struct {
+		name                               string
+		want, need, budget, candidatesWant int
+		room                               int
+	}{
+		// Six rows of body, and one machine needs four of them: after the candidate list keeps its
+		// floor of two there are four left, which is not enough for the heading, the machine and the
+		// marker together. The section yields WHOLE rather than saying nothing it can substantiate.
+		{"no machine fits beside a usable list", 13, 6, 6, 12, 0},
+		// A tall terminal and two candidates: the list wants two rows, so the spare beats the half
+		// share and the section takes everything it asked for. This is the non-monotonic shape the
+		// `candidatesWant` argument exists to prevent — `1 machine not shown` over blank rows.
+		// The want is deliberately ABOVE half the body (12): a smaller want is served by the half
+		// share alone, so the cell would pass with the spare branch deleted — measured, it did.
+		{"few candidates hand the section the spare", 20, 4, 24, 2, 20},
+		// Twenty candidates want more than the body: no spare, so the section is held to half.
+		{"a full list holds the section to half", 13, 4, 24, 30, 12},
+		// And half is not a hard ceiling for the FIRST machine: six rows of need against five of
+		// half, and the machine wins — the asymmetry is that the list scrolls and the section cannot.
+		{"one whole machine outranks the half share", 6, 6, 10, 20, 6},
+	}
+	for _, c := range cases {
+		if got := discoveredRoom(c.want, c.need, c.budget, c.candidatesWant); got != c.room {
+			t.Errorf("%s: discoveredRoom(want=%d need=%d budget=%d candidates=%d) = %d, want %d",
+				c.name, c.want, c.need, c.budget, c.candidatesWant, got, c.room)
+		}
 	}
 }

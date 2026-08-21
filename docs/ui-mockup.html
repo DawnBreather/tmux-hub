@@ -32,7 +32,7 @@ code{background:#000;padding:1px 5px;border-radius:4px;font-size:12.5px}
 <p>Каждый экран ниже — это байты, которые печатает <code>View()</code>. Ничего не нарисовано руками:
 макет с выдуманными экранами позволил бы одобрить раскладку, которой программа не выдаёт.
 Собрано генератором <code>internal/ui/mockup_test.go</code>.</p></header>
-<nav><a href="#s0">Дашборд</a><a href="#s1">Рассылка промпта</a><a href="#s2">Убрать шум</a><a href="#s3">Запустить агента</a><a href="#s4">Рестарт и убийство</a><a href="#s5">История и переотправка</a><a href="#s6">Деградация и края</a><a href="#s7">Первая отрисовка и статусы хостов</a><a href="#s8">Все причины подтверждения</a><a href="#s9">Тридцать панелей на 24 строках</a><a href="#s10">Хаб внутри tmux — то, что видно всегда</a><a href="#s11">Выбор хостов — первый запуск</a><a href="#s12">Имя сессии — N</a><a href="#s13">Ширина, обрезка и проектный вид</a><a href="#s14">Своё против чужого: заголовки, id панелей и окна хаба</a><a href="#s15">Файловая система: тома, каталоги, сессии</a></nav><main><section id="s0"><h2>1. Дашборд</h2><p class="intro">Одна и та же группа панелей на трёх ширинах. Раскладка выбирается сама: до 100 колонок только инбокс, до 160 инбокс и одна плитка, дальше сетка.</p><figure class="shot"><figcaption>
+<nav><a href="#s0">Дашборд</a><a href="#s1">Рассылка промпта</a><a href="#s2">Убрать шум</a><a href="#s3">Запустить агента</a><a href="#s4">Рестарт и убийство</a><a href="#s5">История и переотправка</a><a href="#s6">Деградация и края</a><a href="#s7">Первая отрисовка и статусы хостов</a><a href="#s8">Все причины подтверждения</a><a href="#s9">Тридцать панелей на 24 строках</a><a href="#s10">Хаб внутри tmux — то, что видно всегда</a><a href="#s11">Выбор хостов — первый запуск</a><a href="#s12">Имя сессии — N</a><a href="#s13">Ширина, обрезка и проектный вид</a><a href="#s14">Своё против чужого: заголовки, id панелей и окна хаба</a><a href="#s15">Файловая система: тома, каталоги, сессии</a><a href="#s16">Что стоит за хопами</a></nav><main><section id="s0"><h2>1. Дашборд</h2><p class="intro">Одна и та же группа панелей на трёх ширинах. Раскладка выбирается сама: до 100 колонок только инбокс, до 160 инбокс и одна плитка, дальше сетка.</p><figure class="shot"><figcaption>
 <div class="t">Дашборд, 80 колонок — inbox-only</div>
 <div class="meta"><b>80×24</b> · хаб только запущен, ничего не выбрано</div>
 <div class="look">читается ли состояние фронта одним взглядом: кто ждёт ответа, кто работает, кто затих. Хватает ли 80 колонок, и что даёт лишняя ширина.</div>
@@ -1439,6 +1439,90 @@ Hosts — 20 candidates in ~/.ssh/config, 4 answer with tmux, 1 timed out
   ↓ 15 more · j/k to move
 
 space: keep this host · enter: save and connect · esc: cancel · r: probe again</pre></figure><figure class="shot"><figcaption>
+<div class="t">4. Что стоит ЗА взятыми хостами — 100×32</div>
+<div class="meta"><b>100×32</b> · хаб спросил каждый взятый хост, что объявляет ЕГО ~/.ssh/config, и разрешил транспорт каждой найденной машины на том же хосте</div>
+<div class="look">несёт ли каждая строка ДЕЙСТВИЕ, а не диагноз: у первой машины это конкретный ssh-copy-id, у второй — что между нами стоит прокси, и потому её вообще нельзя опознать (отпечаток пришёл бы от прокси, а не от неё). Список кандидатов при этом остаётся хозяином экрана: галочки на месте, курсор виден, а секция взяла ровно столько, сколько осталось.</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>Behind your hops — 2 machines your hosts declare</code>, <code>blocked   lab-gpu @staging-2</code>, <code>run `ssh-copy-id build@lab-gpu.internal`</code>, <code>no key that is here</code>, <code>› [x] nuc           tmux 3.2a</code>, <code>space: keep this host · enter: save and connect · esc: cancel · r: probe again</code>, не содержит <code>2 machines not shown</code>, не содержит <code>[x] github.com</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+&gt;  ⚑ needs  local/api
+   ✱ quiet  nuc/deploy
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Hosts — 20 candidates in ~/.ssh/config, 4 answer with tmux, 1 timed out
+
+› [x] nuc           tmux 3.2a
+  [x] staging-2     no answer in 10s — this host is slow rather than absent; enable it anyway, or
+                    raise --probe-timeout (asked 09:41:07)
+  [ ] lab-nuc       tmux 3.2a
+  [!] build-01      no tmux — install it there, or leave this host off
+  ↓ 16 more · j/k to move
+Behind your hops — 2 machines your hosts declare
+  blocked   lab-gpu @staging-2             no timing
+      run `ssh-copy-id build@lab-gpu.internal`, or copy one of ~/.ssh/id_rsa, ~/.ssh/id_ecdsa,
+      ~/.ssh/id_ecdsa_sk, ~/.ssh/id_ed25519, ~/.ssh/id_ed25519_sk to this machine — the recipe names
+      no key that is here
+
+space: keep this host · enter: save and connect · esc: cancel · r: probe again</pre></figure><figure class="shot"><figcaption>
+<div class="t">5. Тот же экран на 120×44 — обе машины целиком</div>
+<div class="meta"><b>120×44</b> · то же состояние, терминал выше: секции хватает места на вторую машину</div>
+<div class="look">растёт ли ответ вместе с терминалом — вторая машина появляется целиком, и вместе с ней исчезает нужда в строке «сколько не показано»: заголовок по-прежнему называет общее число, так что читателю не нужно её искать.</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>Behind your hops — 2 machines your hosts declare</code>, <code>blocked   lab-gpu @staging-2</code>, <code>blocked   vault-01 @staging-2</code>, <code>run `ssh-copy-id build@lab-gpu.internal`</code>, <code>give this machine a direct route — bastion-a stands between it and</code>, <code>› [x] nuc           tmux 3.2a</code>, не содержит <code>machines not shown</code>, не содержит <code>machine not shown</code>, не содержит <code>[x] github.com</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+&gt;  ⚑ needs  local/api
+   ✱ quiet  nuc/deploy
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Hosts — 20 candidates in ~/.ssh/config, 4 answer with tmux, 1 timed out
+
+› [x] nuc           tmux 3.2a
+  [x] staging-2     no answer in 10s — this host is slow rather than absent; enable it anyway, or raise --probe-timeout
+                    (asked 09:41:07)
+  [ ] lab-nuc       tmux 3.2a
+  [!] build-01      no tmux — install it there, or leave this host off
+      github.com    not a shell host — this is a git remote, so leave it off
+  [x] dev-box       tmux 3.4
+  [x] office-nas    tmux 3.2a
+      stale07       DNS does not resolve — a stale ssh config entry? fix or remove it
+  ↓ 12 more · j/k to move
+Behind your hops — 2 machines your hosts declare
+  blocked   lab-gpu @staging-2             no timing
+      run `ssh-copy-id build@lab-gpu.internal`, or copy one of ~/.ssh/id_rsa, ~/.ssh/id_ecdsa, ~/.ssh/id_ecdsa_sk,
+      ~/.ssh/id_ed25519, ~/.ssh/id_ed25519_sk to this machine — the recipe names no key that is here
+  blocked   vault-01 @staging-2            no timing
+      give this machine a direct route — bastion-a stands between it and vault-01.internal, and a proxied handshake
+      reports the proxy&#39;s host key rather than vault-01.internal&#39;s, so the hub cannot tell which machine answered
+
+space: keep this host · enter: save and connect · esc: cancel · r: probe again</pre></figure><figure class="shot"><figcaption>
 <div class="t">4. Ни один хост не подходит</div>
 <div class="meta"><b>120×24</b> · проба ответила по каждому кандидату, и ни один не назвал версию tmux</div>
 <div class="look">читается ли это как названное состояние, а не как сломанный экран: счётчик говорит «0 answer with tmux», у каждой строки причина со средством, галочки нет ни у кого, r и esc работают.</div>
@@ -1981,7 +2065,7 @@ local up · nuc up</pre></figure><figure class="shot"><figcaption>
 
 
 
-┌─ local xmap-universal-reader %x ─────────────────────────────────────┐
+┌─ local xmap-universal-reader %2 ─────────────────────────────────────┐
 │  ❯                                                                   │
 └──────────────────────────────────────────────────────────────────────┘
 local up · nuc up</pre></figure><figure class="shot"><figcaption>
@@ -2008,7 +2092,7 @@ local up · nuc up</pre></figure><figure class="shot"><figcaption>
 
 
 
-┌─ local xmap-universal-reader %x ─────────────────────────────────────┐
+┌─ local xmap-universal-reader %2 ─────────────────────────────────────┐
 │  ❯                                                                   │
 └──────────────────────────────────────────────────────────────────────┘
 local up · nuc up</pre></figure></section><section id="s15"><h2>16. Файловая система: тома, каталоги, сессии</h2><p class="intro">Хосты — тома, каталоги — каталоги, сессии — файлы. Сегодня «проект» это только последний сегмент пути, и вся иерархия выбрасывается: `st-edgebox`, `frontend` и `tundra-security-server` — три несвязанные метки, которые на самом деле одна семья `~/lab/streams/st`. Порядок внутри узла — по ВНИМАНИЮ, а не по алфавиту: это единственное решение против метафоры, и оно за то, ради чего экран существует. Узлы несут свёрнутый счётчик, поэтому закрытое дерево отвечает на «кто меня ждёт» в четыре строки. Первая отрисовка открывает КАРТУ (тома и ветви) и закрывает ПАПКИ (листья с сессиями) — это решение, которое делает экран пригодным как дефолтный (§23).</p><figure class="shot"><figcaption>
@@ -2034,8 +2118,8 @@ local up · nuc up</pre></figure></section><section id="s15"><h2>16. Файло�
 
 ┌─ local (volume) ─────────────────────────────────────────────────────┐
 │ 6 sessions · 3 asking                                                │
-│ ⚑ needs  healthchecks                                                │
 │ ⚑ needs  store-online                                                │
+│ ⚑ needs  healthchecks                                                │
 │ ⚑ needs  troubleshooting                                             │
 │ … and 3 more                                                         │
 └──────────────────────────────────────────────────────────────────────┘
@@ -2062,8 +2146,8 @@ local up · nuc up</pre></figure><figure class="shot"><figcaption>
 
 ┌─ local (volume) ─────────────────────────────────────────────────────┐
 │ 6 sessions · 3 asking                                                │
-│ ⚑ needs  healthchecks                                                │
 │ ⚑ needs  store-online                                                │
+│ ⚑ needs  healthchecks                                                │
 │ ⚑ needs  troubleshooting                                             │
 │ … and 3 more                                                         │
 └──────────────────────────────────────────────────────────────────────┘
@@ -2090,8 +2174,8 @@ local up · nuc up</pre></figure><figure class="shot"><figcaption>
 
 ┌─ local (volume) ─────────────────────────────────────────────────────┐
 │ 6 sessions · 3 asking                                                │
-│ ⚑ needs  healthchecks                                                │
 │ ⚑ needs  store-online                                                │
+│ ⚑ needs  healthchecks                                                │
 │ ⚑ needs  troubleshooting                                             │
 │ … and 3 more                                                         │
 └──────────────────────────────────────────────────────────────────────┘
@@ -2118,8 +2202,8 @@ local up · nuc up</pre></figure><figure class="shot"><figcaption>
 
 ┌─ local (volume) ─────────────────────────────────────────────────────┐
 │ 6 sessions · 3 asking                                                │
-│ ⚑ needs  healthchecks                                                │
 │ ⚑ needs  store-online                                                │
+│ ⚑ needs  healthchecks                                                │
 │ ⚑ needs  troubleshooting                                             │
 │ … and 3 more                                                         │
 └──────────────────────────────────────────────────────────────────────┘
@@ -2131,8 +2215,8 @@ local up · nuc up</pre></figure><figure class="shot"><figcaption>
 </figcaption><pre>7 sessions · 4 asking · enter opens · esc leaves · a goes to what waits · n new session here · / finds · q quits
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 &gt; ▾ FAVOURITES                                                                                          ⚑ 2  of 2
-    ⚑ needs  healthchecks @local:~/lab/streams/st/frontend
     ⚑ needs  store-online @local:~/lab/streams/st/st-edgebox
+    ⚑ needs  healthchecks @local:~/lab/streams/st/frontend
   ▾ local/                                                                                              ⚑ 1  of 4
     ▾ ~/lab/streams/                                                                                    ⚑ 1  of 3
       ▾ st/                                                                                             ⚑ 1  of 2
@@ -2146,8 +2230,8 @@ local up · nuc up</pre></figure><figure class="shot"><figcaption>
 
 ┌─ FAVOURITES (what you pinned) ───────────────────────────────────────┐
 │ 2 sessions · 2 asking · f pins a session, and it moves here          │
-│ ⚑ needs  healthchecks                                                │
 │ ⚑ needs  store-online                                                │
+│ ⚑ needs  healthchecks                                                │
 │                                                                      │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
@@ -2174,8 +2258,8 @@ local up · nuc up</pre></figure><figure class="shot"><figcaption>
 
 ┌─ local ~/lab/streams ────────────────────────────────────────────────┐
 │ 5 sessions · 3 asking · /home/dev/lab/streams                        │
-│ ⚑ needs  healthchecks                                                │
 │ ⚑ needs  store-online                                                │
+│ ⚑ needs  healthchecks                                                │
 │ ⚑ needs  troubleshooting                                             │
 │ … and 2 more                                                         │
 └──────────────────────────────────────────────────────────────────────┘
@@ -2220,7 +2304,7 @@ alt+enter: newline  ·  enter: send  ·  esc: keep draft and leave</pre></figure
 
 ┌─ local ~/lab/streams ────────────────────────────────────────────────┐
 │ 5 sessions · 3 asking · /home/dev/lab/streams                        │
-│ ⚑ needs  healthchecks                                                │
+│ ⚑ needs  store-online                                                │
 │ … and 4 more                                                         │
 └──────────────────────────────────────────────────────────────────────┘
 local up · nuc up
@@ -2263,7 +2347,123 @@ enter: create · esc: cancel · ctrl+u: clear · tab/shift+tab: move · left/rig
 │                                                                      │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
-search: frontend▏  ·  2 of 7 · enter: keep · esc: cancel · local up · nuc up</pre></figure></section></main><footer>16 сценариев, 81 экранов.
+search: frontend▏  ·  2 of 7 · enter: keep · esc: cancel · local up · nuc up</pre></figure></section><section id="s16"><h2>17. Что стоит за хопами</h2><p class="intro">Раздел пикера про машины, до которых у этой машины прямой дороги нет: их объявляет ssh-конфиг ХОПА, прочитанный по уже открытому мастеру. Ни одна из них не становится узлом графа — узел делает только собственное завершённое рукопожатие корня, а через прокси приходит ключ ПОСРЕДНИКА, — поэтому продукт здесь это не строки, на которые можно нажать, а диагноз с одной командой на каждую. Порядок берётся из запомненного времени отклика И ОКРУГЛЯЕТСЯ ДО КОРЗИНЫ: на живом флоте одна проба давала 5,4 / 9,1 / 15,7 / 18,4 с, и список, отсортированный по самой цифре, переставлялся бы между двумя открытиями экрана — строка, которую человек отметил, оказалась бы другой машиной.</p><figure class="shot"><figcaption>
+<div class="t">1. Обещанные 80×24 — одна машина целиком, остальные посчитаны</div>
+<div class="meta"><b>80×24</b> · нажал p; хаб прочитал конфиг единственного включённого хопа</div>
+<div class="look">видно ли, что это НЕ кандидаты корня (у них галочки выше), и доходит ли КОМАНДА до экрана целиком: раздел уступает список галочек, но заголовок держит общее число, а обрезанное посчитано отдельной строкой.</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>Behind your hops — 3 machines your hosts declare</code>, <code>  blocked   edge-eu-1 @depot-a</code>, <code>give this machine a direct route</code>, <code> …</code>, <code>↓ 2 machines not shown — a taller terminal shows more</code>, <code>space: keep this host · enter: save and connect · esc: cancel · r: probe again</code>, не содержит <code>[x] vault-b</code>, не содержит <code>[ ] vault-b</code>, не содержит <code>[x] edge-eu-1</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+&gt;  ⚑ needs  claude   local/api %0
+   · works  claude   local/api %1
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────
+Hosts — 20 candidates in ~/.ssh/config, 5 answer with tmux
+
+› [x] nuc           tmux 3.2a
+  [x] staging-2     tmux 3.2a
+  ↓ 18 more · j/k to move
+Behind your hops — 3 machines your hosts declare
+  blocked   edge-eu-1 @depot-a             &lt;250ms
+      give this machine a direct route — depot-a stands between it and …
+  ↓ 2 machines not shown — a taller terminal shows more
+
+space: keep this host · enter: save and connect · esc: cancel · r: probe again</pre></figure><figure class="shot"><figcaption>
+<div class="t">2. 120×40 — все три с причинами</div>
+<div class="meta"><b>120×40</b> · то же на большом терминале</div>
+<div class="look">у каждой строки есть слово состояния, имя хопа, корзина времени и средство: ключ, которого здесь нет, прокси, который подменяет личность, и шаблон, который не машина. `unreachable` не встречается нигде — это не средство.</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>Behind your hops — 3 machines your hosts declare</code>, <code>  blocked   edge-eu-1 @depot-a</code>, <code>so the hub cannot tell which machine answered</code>, <code>&lt;250ms</code>, <code>↓ 2 machines not shown — a taller terminal shows more</code>, не содержит <code>unreachable</code>, не содержит <code> …</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+   · works  %1   claude
+
+
+
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Hosts — 20 candidates in ~/.ssh/config, 5 answer with tmux
+
+› [x] nuc           tmux 3.2a
+  [x] staging-2     tmux 3.2a
+  [x] lab-nuc       tmux 3.2a
+      build-01      no tmux — install it there, or leave this host off
+      github.com    not a shell host — this is a git remote, so leave it off
+  [x] dev-box       tmux 3.4
+  [x] office-nas    tmux 3.2a
+      stale07       DNS does not resolve — a stale ssh config entry? fix or remove it
+      stale08       DNS does not resolve — a stale ssh config entry? fix or remove it
+  ↓ 11 more · j/k to move
+Behind your hops — 3 machines your hosts declare
+  blocked   edge-eu-1 @depot-a             &lt;250ms
+      give this machine a direct route — depot-a stands between it and edge-eu-1.internal, and a proxied handshake
+      reports the proxy&#39;s host key rather than edge-eu-1.internal&#39;s, so the hub cannot tell which machine answered
+  ↓ 2 machines not shown — a taller terminal shows more
+
+space: keep this host · enter: save and connect · esc: cancel · r: probe again</pre></figure><figure class="shot"><figcaption>
+<div class="t">3. Короткий список кандидатов — раздел берёт то, что списку не нужно</div>
+<div class="meta"><b>120×40</b> · то же на машине, где в ~/.ssh/config всего три записи</div>
+<div class="look">видно ли все три машины с их средствами целиком. Это ПРАВИЛО, а не удача: список галочек прокручивается, поэтому на флоте из двадцати он забирает свою половину, а на флоте из трёх ему нужно три строки — и оставлять остальное пустым, печатая «1 machine not shown», было бы кадром, где БОЛЬШИЙ терминал показывает МЕНЬШЕ.</div>
+<div class="meta">проверяется в <code>go test ./internal/ui/</code>: <code>Behind your hops — 3 machines your hosts declare</code>, <code>  blocked   vault-b @depot-a</code>, <code>run `ssh-copy-id dev@vault-b.internal`</code>, <code>  candidate shelf-* @depot-a</code>, <code>  blocked   edge-eu-1 @depot-a</code>, не содержит <code>unreachable</code>, не содержит <code> …</code>, не содержит <code>not shown</code></div>
+</figcaption><pre>tmux-hub  2 sessions
+LOCAL API
+&gt;  ⚑ needs  %0   claude
+   · works  %1   claude
+
+
+
+
+
+
+
+
+
+
+┌─ local api %0 ───────────────────────────────────────────────────────┐
+│  Do you want to proceed?                                             │
+│  ❯ 1. Yes                                                            │
+│    2. No                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+local up · nuc up
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Hosts — 3 candidates in ~/.ssh/config, 3 answer with tmux
+
+› [x] nuc           tmux 3.2a
+  [x] staging-2     tmux 3.2a
+  [x] lab-nuc       tmux 3.2a
+Behind your hops — 3 machines your hosts declare
+  blocked   edge-eu-1 @depot-a             &lt;250ms
+      give this machine a direct route — depot-a stands between it and edge-eu-1.internal, and a proxied handshake
+      reports the proxy&#39;s host key rather than edge-eu-1.internal&#39;s, so the hub cannot tell which machine answered
+  candidate shelf-* @depot-a               &lt;250ms
+      a pattern rather than a machine, so there is nothing to ask — declare the host it stands for in that machine&#39;s own
+      ~/.ssh/config
+  blocked   vault-b @depot-a               &lt;250ms
+      run `ssh-copy-id dev@vault-b.internal`, or copy ~/.ssh/depot-only to this machine — the recipe names no key that
+      is here
+
+
+
+space: keep this host · enter: save and connect · esc: cancel · r: probe again</pre></figure></section></main><footer>17 сценариев, 86 экранов.
 Пересобрать: <code>go test -tags mockup -run TestGenerateMockup ./internal/ui/</code>.
 Экраны ПРЕДЛОЖЕННОЙ функции живут отдельно и помечены покадрово:
 <a href="ui-flows-possession.html" style="color:#7aa2f7">§20 вселение — потоки</a>.

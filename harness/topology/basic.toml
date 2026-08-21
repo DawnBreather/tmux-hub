@@ -1,0 +1,77 @@
+# harness/topology/basic.toml — the first declared topology.
+#
+# This is docs/specs/2026-08-20-fleet-graph-and-harness-topology-design.md §4 with TWO
+# changes, both forced, both named here.
+#
+# 1. tmux versions. The spec wrote the root as `3.7b`, which is newer than any distribution,
+#    so building it from source would cost minutes per image for a property two PACKAGED
+#    versions already give. The requirement in §4.1 is version HETEROGENEITY, so the root
+#    carries `3.5a` (debian:trixie) and the hop and the leaf carry `3.2a` (ubuntu:22.04).
+#    Measured 2026-08-20 against the distributions rather than assumed: debian trixie
+#    publishes tmux `3.5a-3`, ubuntu jammy publishes `3.2a-4ubuntu0.2`. The live fleet stays
+#    the guard for any 3.7b-specific claim.
+#
+# 2. Comments sit on their own lines. The spec's sample writes some of them after a value,
+#    and the dialect its own decision 8 mandates — `internal/conf` — treats only a line that
+#    BEGINS with `#` as a comment, deliberately, so that a `#` inside a value is safe. A
+#    trailing comment is therefore part of the value and the file would be refused. The
+#    decision outranks the sample's formatting; no text was lost.
+#
+# Every row here is earned by §4.1's table, and the comments name which.
+
+[fleet]
+name = "basic"
+
+# The root observer: the machine the hub runs on.
+[[machine]]
+id       = "root"
+shell    = "posix"
+tmux     = "3.5a"
+networks = ["net-a"]
+# Two aliases for ONE machine, so identity merging is exercised at hop 1 — where v1 can
+# actually verify it (§3.4). `hop-again` must fold into `hop`, not become a second node.
+declares = ["hop", "hop-again", "twin-a", "twin-b"]
+
+[[machine]]
+id       = "hop"
+aliases  = ["hop", "hop-again"]
+# `nushell`: the measured failure mode, present from the first topology.
+shell    = "nushell"
+tmux     = "3.2a"
+networks = ["net-a", "net-b"]
+# `hub`: carries hosts.toml, so ranking has an input.
+hub      = true
+# `hop` declared again is a cycle, to prove the crawl terminates.
+declares = ["leaf", "hop"]
+
+# Two DIFFERENT machines answering to one hostname: the label-collision test. Both are on the
+# root's network, so both verify, and the graph must hold two nodes with one label.
+[[machine]]
+id       = "twin-a"
+hostname = "twin"
+networks = ["net-a"]
+
+[[machine]]
+id       = "twin-b"
+hostname = "twin"
+networks = ["net-a"]
+
+# Off the root's network entirely: the root cannot reach it, and the hop's recipe for it names
+# the hop's own key -> `Blocked`, with a remedy.
+[[machine]]
+id       = "leaf"
+shell    = "posix"
+tmux     = "3.2a"
+networks = ["net-b"]
+
+[[edge]]
+from = "root"
+to   = "hop"
+delay = "5ms"
+
+# `key`: the leaf accepts the HOP's key, not the root's.
+[[edge]]
+from = "hop"
+to   = "leaf"
+delay = "180ms"
+key  = "hop-only"

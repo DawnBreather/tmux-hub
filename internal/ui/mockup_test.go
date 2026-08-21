@@ -24,11 +24,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/DawnBreather/tmux-hub/internal/fav"
+	"github.com/DawnBreather/tmux-hub/internal/fleetcache"
 	"github.com/DawnBreather/tmux-hub/internal/project"
 	"time"
 
 	"github.com/DawnBreather/tmux-hub/internal/broadcast"
 	"github.com/DawnBreather/tmux-hub/internal/history"
+	"github.com/DawnBreather/tmux-hub/internal/hostset"
 	"github.com/DawnBreather/tmux-hub/internal/hub"
 	"github.com/DawnBreather/tmux-hub/internal/registry"
 	"github.com/DawnBreather/tmux-hub/internal/state"
@@ -47,7 +49,7 @@ import (
 
 // fleet is the cast used by most scenes: four agents across two hosts, a build
 // watcher and a log tail as the noise, in a spread of states.
-func fleet() []registry.Pane {
+func mockupFleet() []registry.Pane {
 	return []registry.Pane{
 		agentPane("local", "api", "review", "%0", 0, state.Needs,
 			"  Do you want to proceed?", "  ❯ 1. Yes", "    2. No"),
@@ -76,7 +78,7 @@ func TestGenerateMockup(t *testing.T) {
 	{
 		var sh []shot
 		for _, w := range []int{80, 120, 190} {
-			m := base(t, w, 24, fleet()...)
+			m := base(t, w, 24, mockupFleet()...)
 			m.note = ""
 			sh = append(sh, shot{
 				title: fmt.Sprintf("Дашборд, %d колонок — %s", w, LayoutFor(w)),
@@ -97,7 +99,7 @@ func TestGenerateMockup(t *testing.T) {
 	// ---- 2. Broadcast, the happy path ---------------------------------------
 	{
 		var sh []shot
-		m := base(t, 120, 24, fleet()...)
+		m := base(t, 120, 24, mockupFleet()...)
 		sh = append(sh, shot{title: "1. Ничего не выбрано", did: "исходное состояние",
 			look: "видно ли, что делать дальше, без подсказки", w: 120, h: 24, screen: m.View()})
 
@@ -123,7 +125,7 @@ func TestGenerateMockup(t *testing.T) {
 		sh = append(sh, shot{title: "5. Подтверждение: больше одной цели", did: "нажал enter",
 			look: "названы ли цели и причина; понятно ли, что подтверждаю", w: 120, h: 24, screen: m.View()})
 
-		m2 := base(t, 120, 24, fleet()...)
+		m2 := base(t, 120, 24, mockupFleet()...)
 		m2.note = "отправлено в 2 панели · подтверждено на экране"
 		sh = append(sh, shot{title: "6. Отправлено", did: "подтвердил",
 			look: "говорит ли итог, что текст реально доехал, а не просто был послан",
@@ -138,7 +140,7 @@ func TestGenerateMockup(t *testing.T) {
 	// ---- 3. Removing the noise ----------------------------------------------
 	{
 		var sh []shot
-		m := base(t, 120, 24, fleet()...)
+		m := base(t, 120, 24, mockupFleet()...)
 		sh = append(sh, shot{title: "1. Шум в списке", did: "исходное: make и tail не агенты и никогда ими не станут",
 			look: "сколько внимания забирают строки, которые никогда не потребуют ответа", w: 120, h: 24, screen: m.View()})
 
@@ -172,7 +174,7 @@ func TestGenerateMockup(t *testing.T) {
 	// ---- 4. Launching an agent ----------------------------------------------
 	{
 		var sh []shot
-		m := base(t, 120, 24, fleet()...)
+		m := base(t, 120, 24, mockupFleet()...)
 		m.mode = modeLaunch
 		m = m.cursorTo(0)
 		m = m.openLaunchForm()
@@ -180,7 +182,7 @@ func TestGenerateMockup(t *testing.T) {
 			did:  "нажал n",
 			look: "видно ли все пять решений сразу и какое из них требует ввода", w: 120, h: 24, screen: m.View()})
 
-		// THE PRE-FILL, on a fleet that has a cwd — `fleet()` sets none, so the scene above shows the
+		// THE PRE-FILL, on a fleet that has a cwd — `mockupFleet()` sets none, so the scene above shows the
 		// empty case and this one shows the case an operator actually meets. Without it the feature is
 		// invisible in this document and the next refactor can drop it without moving a frame.
 		withPath := agentPane("nuc", "api", "logs", "%9", 9, state.Quiet, "  ❯ ")
@@ -223,7 +225,7 @@ func TestGenerateMockup(t *testing.T) {
 	// ---- 5. Restart and kill ------------------------------------------------
 	{
 		var sh []shot
-		m := base(t, 120, 24, fleet()...)
+		m := base(t, 120, 24, mockupFleet()...)
 		m = m.cursorTo(1)
 		m.sel.Toggle(SelectionKey{Host: "local", PaneID: "%1"})
 		m.mode, m.pendingAct = modeConfirm, actionKill
@@ -231,7 +233,7 @@ func TestGenerateMockup(t *testing.T) {
 		sh = append(sh, shot{title: "1. K по живому агенту", did: "выбрал панель с агентом, нажал K",
 			look: "названа ли ЖЕРТВА и сказано ли, что в ней работает агент", w: 120, h: 24, screen: m.View()})
 
-		dead := fleet()
+		dead := mockupFleet()
 		dead[1].Dead, dead[1].DeadStatus, dead[1].ClassifiedState = true, 7, state.Error
 		dead[1].Content = []string{"Pane is dead (status 7, Wed Aug 12 13:21:15 2026)"}
 		m2 := base(t, 120, 24, dead...)
@@ -256,7 +258,7 @@ func TestGenerateMockup(t *testing.T) {
 	// ---- 6. History ---------------------------------------------------------
 	{
 		var sh []shot
-		m := base(t, 120, 24, fleet()...)
+		m := base(t, 120, 24, mockupFleet()...)
 		now := mockupNow
 		m.history = []history.Entry{
 			{At: now.Add(-2 * time.Minute), Host: "local", PaneID: "%1", SessionName: "api", WindowName: "fix",
@@ -295,7 +297,7 @@ func TestGenerateMockup(t *testing.T) {
 		var sh []shot
 		down := hosts2()
 		down[1].Status, down[1].Reason = hub.Down, "dial /run/user/1000/nuc.sock: connect: connection refused"
-		st := fleet()
+		st := mockupFleet()
 		for i := range st {
 			if st[i].Host == "nuc" {
 				st[i].Stale, st[i].StaleSince = true, mockupNow.Add(-4*time.Minute)
@@ -309,14 +311,14 @@ func TestGenerateMockup(t *testing.T) {
 
 		ro := hosts2()
 		ro[1].SSHDest, ro[1].ControlPath = "", ""
-		m2 := base(t, 120, 24, fleet()...)
+		m2 := base(t, 120, 24, mockupFleet()...)
 		m2.hosts = ro
 		m2 = m2.cursorTo(4)
 		m2.note = "хост nuc без ssh= — читать можно, attach и проверку каталога нельзя"
 		sh = append(sh, shot{title: "2. Удалённый хост только для чтения", did: "выбрал панель на хосте без ssh=",
 			look: "честно ли сказано, ЧТО именно нельзя и почему", w: 120, h: 24, screen: m2.View()})
 
-		dead := fleet()
+		dead := mockupFleet()
 		dead[4].Dead, dead[4].DeadStatus, dead[4].ClassifiedState = true, 7, state.Error
 		dead[4].Content = []string{"Pane is dead (status 7, Wed Aug 12 13:21:15 2026)"}
 		dead[5].Dead, dead[5].DeadStatus, dead[5].ClassifiedState = true, 0, state.Error
@@ -325,7 +327,7 @@ func TestGenerateMockup(t *testing.T) {
 		sh = append(sh, shot{title: "3. Мёртвые панели с кодом выхода", did: "два агента вышли: один с 7, другой с 0",
 			look: "различимы ли «упал» и «закончил»; читается ли exited 0 как отказ", w: 120, h: 24, screen: m3.View()})
 
-		m4 := base(t, 120, 24, fleet()...)
+		m4 := base(t, 120, 24, mockupFleet()...)
 		m4.note = "select a pane with space first — a prompt needs a target"
 		sh = append(sh, shot{title: "4. i без выбора", did: "нажал i, ничего не выбрав",
 			look: "несёт ли отказ исправление, а не только «нельзя»", w: 120, h: 24, screen: m4.View()})
@@ -334,7 +336,7 @@ func TestGenerateMockup(t *testing.T) {
 		sh = append(sh, shot{title: "5. Ни одной панели", did: "tmux запущен, но пуст",
 			look: "понятно ли, что делать; не выглядит ли как поломка", w: 120, h: 24, screen: m5.View()})
 
-		m6 := base(t, 40, 6, fleet()...)
+		m6 := base(t, 40, 6, mockupFleet()...)
 		sh = append(sh, shot{title: "6. Слишком узкий терминал", did: "сжал окно до 40×6",
 			look: "деградирует честно или ломается", w: 40, h: 6, screen: m6.View()})
 
@@ -349,7 +351,7 @@ func TestGenerateMockup(t *testing.T) {
 		// побайтово воспроизводимым: до кадра доходит только БУЛЕВО «факт свежий», а `mockupNow`
 		// пятидневной давности сделал бы его просроченным и кадр показывал бы ровно то, что было до
 		// правки. Ни одной метки времени эта строка не печатает.
-		split := fleet()
+		split := mockupFleet()
 		named := false
 		for i := range split {
 			if split[i].Host != "nuc" {
@@ -406,7 +408,7 @@ func TestGenerateMockup(t *testing.T) {
 			{Label: "local", Socket: "/tmp/tmux-1000/default", Status: hub.Up, Version: "3.7b", LocalProc: true},
 			{Label: "nuc", Socket: "/run/user/1000/nuc.sock", Status: hub.Connecting, SSHDest: "nuc"},
 			{Label: "st", Socket: "/run/user/1000/st.sock", Status: hub.UpEmpty, SSHDest: "st",
-				ControlPath: "/home/dev/.ssh/cm-gs"},
+				ControlPath: "/home/dev/.ssh/cm-st"},
 			{Label: "old", Socket: "/run/user/1000/old.sock", Status: hub.DegradedFormat,
 				Reason: "window_activity came back empty on this host", SSHDest: "old"},
 			{Label: "dead", Socket: "/run/user/1000/dead.sock", Status: hub.Down,
@@ -462,7 +464,7 @@ func TestGenerateMockup(t *testing.T) {
 				"сказано ли, чем это грозит — текст уйдёт как нажатия клавиш"},
 		}
 		for _, r := range rows {
-			m := base(t, 120, 24, fleet()...)
+			m := base(t, 120, 24, mockupFleet()...)
 			m = m.cursorTo(1)
 			m.sel.Toggle(SelectionKey{Host: "local", PaneID: "%1"})
 			m.mode, m.pendingAct = modeConfirm, actionSend
@@ -471,7 +473,7 @@ func TestGenerateMockup(t *testing.T) {
 				look: r.look, w: 120, h: 24, screen: m.View()})
 		}
 
-		m := base(t, 120, 24, fleet()...)
+		m := base(t, 120, 24, mockupFleet()...)
 		m = m.cursorTo(1)
 		m.sel.Toggle(SelectionKey{Host: "local", PaneID: "%1"})
 		m.sel.Toggle(SelectionKey{Host: "nuc", PaneID: "%5"})
@@ -567,7 +569,7 @@ func TestGenerateMockup(t *testing.T) {
 			return ps
 		}
 		mk := func(w, cursor int) model {
-			m := base(t, w, 24, withEpoch(fleet())...)
+			m := base(t, w, 24, withEpoch(mockupFleet())...)
 			m = m.cursorTo(cursor)
 			m.selfSession, m.selfEpoch = "$0", selfEpoch
 			return m
@@ -639,6 +641,18 @@ func TestGenerateMockup(t *testing.T) {
 	scenes = append(scenes, widthScene(t))
 	scenes = append(scenes, hubOwnScene(t))
 	scenes = append(scenes, treeScene(t))
+
+	// ---- 17. Что стоит за хопами --------------------------------------------
+	//
+	// Раздел «discovered» пикера: машины, которые объявляет ЧУЖОЙ ssh-конфиг — те, до
+	// которых у корня нет прямой дороги. Он появляется здесь потому, что правка, которой
+	// нет в этом документе, регрессирует без диффа: пятьдесят с лишним сцен не содержали
+	// ни одной строки, объявленной не корнем.
+	//
+	// Сцена ДОБАВЛЕНА В КОНЕЦ, а не рядом с пикером, по причине, записанной у сцены 12:
+	// якоря разделов этого документа опубликованы, и вставка в середину молча переставила
+	// бы каждый следующий.
+	scenes = append(scenes, discoveredScene(t))
 
 	// EVERY `want` AND `deny` IS CHECKED HERE, before the document is written.
 	//
@@ -1221,4 +1235,139 @@ func widthScene(t *testing.T) scene {
 			"шапке; плитка панели без захвата; и счёт в списке проектов, читавшийся как половина " +
 			"фразы.",
 		shots: sh}
+}
+
+// discoveredScene is the picker with machines behind its hops.
+//
+// EVERY NAME HERE IS INVENTED, which is the same hard rule pickerFleet states and for the same
+// reason: `docs/` is bind-mounted read-only into a running Caddy container and served publicly, so a
+// frame is published the moment it is written. The identity files are invented too — a real key path
+// names a real machine's credential.
+//
+// The rows are built through the PRODUCT: `crawled` diagnoses each declaration with the real
+// fleet.Diagnose against a home directory that holds none of the keys, and the graph folds them. A
+// hand-written row would let this document publish a state and a remedy the program does not produce.
+func discoveredScene(t *testing.T) scene {
+	t.Helper()
+	cands, results := pickerFleet()
+	rows := PickerRowsFor(cands, results, nil, nil, pickerAsked)
+
+	// A home with no keys at all, so every recipe naming one is genuinely Blocked. t.TempDir() and
+	// not a literal: a path from this machine would make the frame depend on the machine.
+	home := t.TempDir()
+	store := newFleetStore()
+	store.Observe(crawled("depot-a", []hostset.Candidate{
+		{Alias: "vault-b", Via: "depot-a", Recipe: map[string]string{
+			"hostname": "vault-b.internal", "user": "dev", "identityfile": "~/.ssh/depot-only"}},
+		{Alias: "edge-eu-1", Via: "depot-a", Recipe: map[string]string{
+			"hostname": "edge-eu-1.internal", "user": "dev", "proxyjump": "depot-a"}},
+		{Alias: "shelf-*", Via: "depot-a",
+			Skip: "a pattern rather than a machine, so there is nothing to ask — declare the host it " +
+				"stands for in that machine's own ~/.ssh/config"},
+	}, home)...)
+	snap := store.Snapshot()
+	// A remembered round trip for the hop, which is the only measurement that bounds anything behind
+	// it — the section prints the hop beside the label so the figure is never read as the machine's.
+	facts := func(k fleetcache.Key) (fleetcache.Facts, bool) {
+		if k.Alias == "depot-a" {
+			return fleetcache.Facts{RTT: 180 * time.Millisecond, LastSeen: mockupNow}, true
+		}
+		return fleetcache.Facts{}, false
+	}
+	found := DiscoveredRowsFor(snap.Nodes, snap.Candidates, facts)
+
+	narrow := pickerModel(t, 80, 24, rows, hosts2(), pickerLocalOnly()...)
+	narrow.discovered = found
+	wide := pickerModel(t, 120, 40, rows, hosts2(), pickerLocalOnly()...)
+	wide.discovered = found
+
+	// A machine whose ~/.ssh/config holds three entries rather than twenty. The candidate list then
+	// wants three rows, and the section may have the rest — the rule that stops a taller terminal
+	// showing less than a shorter one.
+	fewCands, fewResults := cands[:3], results[:3]
+	few := pickerModel(t, 120, 40, PickerRowsFor(fewCands, fewResults, nil, nil, pickerAsked),
+		hosts2(), pickerLocalOnly()...)
+	few.discovered = found
+
+	return scene{
+		name: "Что стоит за хопами",
+		intro: "Раздел пикера про машины, до которых у этой машины прямой дороги нет: их объявляет " +
+			"ssh-конфиг ХОПА, прочитанный по уже открытому мастеру. Ни одна из них не становится " +
+			"узлом графа — узел делает только собственное завершённое рукопожатие корня, а через " +
+			"прокси приходит ключ ПОСРЕДНИКА, — поэтому продукт здесь это не строки, на которые " +
+			"можно нажать, а диагноз с одной командой на каждую. Порядок берётся из запомненного " +
+			"времени отклика И ОКРУГЛЯЕТСЯ ДО КОРЗИНЫ: на живом флоте одна проба давала 5,4 / 9,1 / " +
+			"15,7 / 18,4 с, и список, отсортированный по самой цифре, переставлялся бы между двумя " +
+			"открытиями экрана — строка, которую человек отметил, оказалась бы другой машиной.",
+		shots: []shot{
+			{
+				title: "1. Обещанные 80×24 — одна машина целиком, остальные посчитаны",
+				did:   "нажал p; хаб прочитал конфиг единственного включённого хопа",
+				look: "видно ли, что это НЕ кандидаты корня (у них галочки выше), и доходит ли " +
+					"КОМАНДА до экрана целиком: раздел уступает список галочек, но заголовок " +
+					"держит общее число, а обрезанное посчитано отдельной строкой.",
+				w: 80, h: 24,
+				screen: narrow.View(),
+				want: []string{
+					"Behind your hops — 3 machines your hosts declare",
+					// The ACT survives the squeeze and the ` …` says the sentence does not: at this
+					// size one machine's whole remedy would take six of the seven body rows.
+					"  blocked   edge-eu-1 @depot-a",
+					"give this machine a direct route",
+					" …",
+					"↓ 2 machines not shown — a taller terminal shows more",
+					"space: keep this host · enter: save and connect · esc: cancel · r: probe again",
+				},
+				// Ни одна строка раздела не несёт галочки: нажать на них нечего, и коробка тут
+				// была бы обещанием, которого продукт не выполняет.
+				deny: []string{"[x] vault-b", "[ ] vault-b", "[x] edge-eu-1"},
+			},
+			{
+				title: "2. 120×40 — все три с причинами",
+				did:   "то же на большом терминале",
+				look: "у каждой строки есть слово состояния, имя хопа, корзина времени и средство: " +
+					"ключ, которого здесь нет, прокси, который подменяет личность, и шаблон, " +
+					"который не машина. `unreachable` не встречается нигде — это не средство.",
+				w: 120, h: 40,
+				screen: wide.View(),
+				want: []string{
+					"Behind your hops — 3 machines your hosts declare",
+					"  blocked   edge-eu-1 @depot-a",
+					// WHOLE here, where the same sentence was cut at 80: the taller terminal is what
+					// buys it, and the two frames side by side are the evidence for that.
+					"so the hub cannot tell which machine answered",
+					// The hop's own round trip, bucketed. Every row carries it because a machine
+					// behind a hop cannot be nearer than the hop, and the hop's name is on the row so
+					// the figure is not read as the far machine's own.
+					"<250ms",
+					"↓ 2 machines not shown — a taller terminal shows more",
+				},
+				// Nothing is cut mid-sentence at this width, so the marker that says one was must not
+				// appear — and `unreachable` names no act, which invariant 4 forbids anywhere.
+				deny: []string{"unreachable", " …"},
+			},
+			{
+				title: "3. Короткий список кандидатов — раздел берёт то, что списку не нужно",
+				did:   "то же на машине, где в ~/.ssh/config всего три записи",
+				look: "видно ли все три машины с их средствами целиком. Это ПРАВИЛО, а не удача: " +
+					"список галочек прокручивается, поэтому на флоте из двадцати он забирает свою " +
+					"половину, а на флоте из трёх ему нужно три строки — и оставлять остальное " +
+					"пустым, печатая «1 machine not shown», было бы кадром, где БОЛЬШИЙ терминал " +
+					"показывает МЕНЬШЕ.",
+				w: 120, h: 40,
+				screen: few.View(),
+				want: []string{
+					"Behind your hops — 3 machines your hosts declare",
+					"  blocked   vault-b @depot-a",
+					"run `ssh-copy-id dev@vault-b.internal`",
+					"  candidate shelf-* @depot-a",
+					"  blocked   edge-eu-1 @depot-a",
+				},
+				// Every machine is shown, so neither the cut marker nor the compression marker may be
+				// on this frame — and those two negatives are what make the positives above mean
+				// "all three", rather than "at least one".
+				deny: []string{"unreachable", " …", "not shown"},
+			},
+		},
+	}
 }

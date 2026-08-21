@@ -1,0 +1,22 @@
+[
+  {
+    "pid": 4242,
+    "id": "6b1d4e02",
+    "cwd": "/work/api",
+    "kind": "background",
+    "startedAt": 1787187507354,
+    "sessionId": "6b1d4e02-7f3a-4c58-9d21-0e5a8c47b910",
+    "name": "harness-live-worker",
+    "status": "busy",
+    "state": "working"
+  },
+  {
+    "id": "c0ffee11",
+    "cwd": "/work/deploy",
+    "kind": "background",
+    "startedAt": 1787180000000,
+    "sessionId": "c0ffee11-2b44-4a90-8e73-5d1f6a2b3c8d",
+    "name": "harness-finished-job",
+    "state": "done"
+  }
+]

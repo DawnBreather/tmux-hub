@@ -32,7 +32,7 @@ func TestTheSocketOverrideLandsAfterTheSocketAndBeforeTheVerb(t *testing.T) {
 	// After -S, not before, and that is measured rather than chosen: on tmux 3.7b the
 	// LAST -S wins (`-S /a -S /b` uses /b), so appending is what lets an -S override
 	// override. -S beats -L in either order, which Target.TmuxArgs records.
-	assertArgv(t, got, "tmux", "-S", "/tmp/tmux-1000/default", "-L", "work",
+	assertArgv(t, got, "tmux", "-u", "-S", "/tmp/tmux-1000/default", "-L", "work",
 		"list-panes", "-a", "-F", "#{pane_id}")
 
 	remote := Target{Label: "nuc", SSHDest: "nuc", ControlPath: "/run/cm-nuc", TmuxArgs: []string{"-L", "work"}}
@@ -46,7 +46,7 @@ func TestTheSocketOverrideLandsAfterTheSocketAndBeforeTheVerb(t *testing.T) {
 	// `Error: nu::parser::parse_mismatch` at rc=0, so the hub saw a poll that succeeded with no
 	// panes in it and the host never left `connecting`. See ShellJoinCommand.
 	assertArgv(t, got, "ssh", "-o", "BatchMode=yes", "-o", "ProxyCommand=false",
-		"-S", "/run/cm-nuc", "nuc", `tmux '-L' 'work' 'list-panes' '-a' '-F' '#{pane_id}'`)
+		"-S", "/run/cm-nuc", "nuc", `tmux '-u' '-L' 'work' 'list-panes' '-a' '-F' '#{pane_id}'`)
 }
 
 // A target with no override is byte-for-byte what it was before it could have one. An
@@ -59,7 +59,7 @@ func TestATargetWithNoOverrideIsUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertArgv(t, got, "tmux", "-S", "/tmp/s", "list-panes", "-a")
+	assertArgv(t, got, "tmux", "-u", "-S", "/tmp/s", "list-panes", "-a")
 
 	// Explicitly EMPTY rather than nil, because the two arrive from different places:
 	// nil is a host with no tmux_args line, and an empty slice is what
@@ -68,7 +68,7 @@ func TestATargetWithNoOverrideIsUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertArgv(t, got, "tmux", "-S", "/tmp/s", "list-panes", "-a")
+	assertArgv(t, got, "tmux", "-u", "-S", "/tmp/s", "list-panes", "-a")
 }
 
 // The discriminating pair, and the reason the override is validated in its OWN call.

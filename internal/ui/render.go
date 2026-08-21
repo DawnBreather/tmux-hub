@@ -970,8 +970,8 @@ func Render(f Frame) string {
 // focus.
 //
 // TWO screens claim this row now, so it is a function rather than two lines repeated. Measured on the
-// filesystem view before it was: the footer drew the applied-filter sentence (`"nev" · 2 of 7`) while
-// the operator was typing, so the CARET and the two keys that end the field (`search: nev▏ · enter:
+// filesystem view before it was: the footer drew the applied-filter sentence (`"fro" · 2 of 7`) while
+// the operator was typing, so the CARET and the two keys that end the field (`search: fro▏ · enter:
 // keep · esc: cancel`) existed on the dashboard and nowhere else — a field whose end you cannot see is
 // a field you cannot type in, which is the ruling the naming overlay had to learn.
 //

@@ -1,7 +1,7 @@
 // The FRAMES of docs/ui-flows-possession.html, and the check that each one shows
 // what it promises. No build tag and no environment variable, deliberately.
 //
-// The document is committed to this repository and its banner says every
+// The document is served at tmux-ui-draft.DawnBreather.net and its banner says every
 // frame is real and checked. It was not: the generator that checks them
 // (flows_test.go) sits behind `//go:build mockup` AND calls t.Skip unless
 // HUB_FLOW_CAPTURES is set — and a skip REPORTS PASS. So all fourteen assertions

@@ -57,10 +57,10 @@ func TestTheKeywordFallsBackToASubsequenceOnlyWhenNothingContainsIt(t *testing.T
 		{"test", 1, false, "`testing-seedtool` contains it"},
 		// NOTHING contains these, and each is exactly the fzf gesture: type across a separator.
 		// BOTH ops rows, and that is the point rather than a surprise: the letters `s`,`c`,`h` occur
-		// in order across two words of the sibling name (`ops-**svc**dev4`), so the
+		// in order across three words of the sibling name (`**shc**dev4-**c**i-**h**otfix`), so the
 		// gesture finds the pair the operator is choosing between instead of guessing for them.
 		{"opssch", 2, true, "`ops-schdev3` is a subsequence and not a substring"},
-		{"opssvc", 2, true, "the sibling row, spelled the way the directory is"},
+		{"opsshc", 2, true, "the sibling row, spelled the way the directory is"},
 		{"seedt", 1, false, "`seedtool` contains it — a whole word, not a gesture"},
 		// Neither pass finds anything: the screen must NOT claim a loose answer it does not have.
 		{"zzzq", 0, false, "no row contains it and no row resembles it"},
@@ -130,10 +130,10 @@ func TestALooseAnswerKeepsTheAttentionOrder(t *testing.T) {
 	}
 
 	// And the same for a loose answer, on a query that keeps both of those rows loosely.
-	loose2 := looseModel(t, "opsdev")
+	loose2 := looseModel(t, "opscompact")
 	rows2, isLoose := loose2.rowsForScreenLoose()
 	if !isLoose {
-		t.Fatalf("`opsdev` should have needed the loose pass, kept %d rows", len(rows2))
+		t.Fatalf("`opscompact` should have needed the loose pass, kept %d rows", len(rows2))
 	}
 	for i := 1; i < len(rows2); i++ {
 		if rows2[i-1].State().Rank() > rows2[i].State().Rank() {

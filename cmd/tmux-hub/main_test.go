@@ -260,6 +260,62 @@ func TestTheProbeCarriesTheOptionsThatBoundIt(t *testing.T) {
 	}
 }
 
+// `-v` is the whole of the fingerprint feature, and it lives in ONE string in the
+// production argv. Measured 2026-08-20 on OpenSSH 10.3p1 against a live host, the same
+// argv with and without it: WITH `-v`, stderr is 68 lines and line 27 reads
+// `debug1: Server host key: ssh-ed25519 SHA256:Px9Aw…`; WITHOUT it, stderr is **0 bytes**
+// and there is no marker at all. So dropping the flag empties every
+// `hostset.Result.Fingerprints`, and empty is exactly what an unreachable machine
+// reports — a total failure of the feature with no symptom anywhere.
+//
+// This guard has to be HERE and cannot be in internal/hostset: that package's
+// real-handshake check builds its own argv, so it stays green with the flag gone from
+// this file, and it skips unless `HOSTSET_REAL_HOST` is set. `hostset.Runner`'s doc
+// comment states the requirement; this is the only thing that holds this implementation
+// to it.
+func TestTheProbeAsksSSHWhichMachineAnswered(t *testing.T) {
+	got := probeArgs("nuc", []string{"tmux -V; id -u"})
+	for _, a := range got {
+		if a == "-v" {
+			return
+		}
+	}
+	t.Errorf("probe argv %q carries no `-v` — without it ssh writes nothing on stderr, so "+
+		"every Result.Fingerprints is empty and the hub cannot say WHICH machine answered. "+
+		"An empty set is also what a machine that never completed a handshake gives, so the "+
+		"loss is silent and reads as an unreachable fleet (spec §2.2)", got)
+}
+
+// A fingerprint is evidence of identity ONLY from a DIRECT connection, so the probe argv
+// must add no proxying of its own. Measured on OpenSSH 10.x, 2026-08-20 (spec §2.2.1):
+//
+//	ssh -v nuc            → 1 `Server host key` line, nuc's
+//	ssh -v -J nuc dev-air → 1 `Server host key` line, and it is the JUMP host's — nuc's,
+//	                        at -v, -vv and -vvv alike; one run reported ZERO
+//
+// Under §2.3's set-intersection merging that is not a missing fact but a WRONG one: the
+// destination would inherit the jump's fingerprint, the two sets would intersect, and two
+// machines would collapse into one node.
+//
+// The argv is direct today, so this is a GUARD rather than a feature — it is what makes
+// adding `-J` or an `-o ProxyJump=…` to the probe a red gate instead of a silent fusion.
+// It cannot see proxying the resolved ssh config supplies for the alias itself; gating on
+// that needs the resolved recipe and is task 4's, per §2.2.1.
+func TestTheProbeArgvIsADirectConnection(t *testing.T) {
+	// An alias containing none of the forbidden words, so a match can only come from a
+	// flag this function added.
+	got := probeArgs("dev-air", []string{"tmux -V; id -u"})
+	for _, a := range got {
+		low := strings.ToLower(a)
+		if a == "-J" || strings.Contains(low, "proxyjump") || strings.Contains(low, "proxycommand") {
+			t.Errorf("probe argv %q proxies through another machine (%q) — a proxied handshake "+
+				"reports the JUMP host's key, not the destination's, so its fingerprint must be "+
+				"DISCARDED rather than attributed to the alias. Attributing it fuses two machines "+
+				"into one node under set-intersection merging (spec §2.2.1)", got, a)
+		}
+	}
+}
+
 // recordingRaw stands in for ssh at the raw door, recording every argv and answering
 // rc=0. The master sweep is the one path in this program whose effect is to KILL
 // something, so what it was asked to kill has to be observable.

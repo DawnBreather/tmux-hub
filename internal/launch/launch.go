@@ -48,7 +48,17 @@ type Spec struct {
 // Plan is a validated launch spec with a session ID assigned.
 type Plan struct {
 	SessionID string // the uuid the hub chose
-	Command   string // the shell command for tmux's shell-command argument
+
+	// Argv is the command as WORDS, which is what a pane is actually created with. The payload
+	// builder needs the elements rather than the line: it wraps them in a login shell (a remote pane
+	// inherits the ssh client's non-login PATH and cannot find `claude` otherwise) and refuses any
+	// element a shell would reinterpret. Joining and re-splitting would put that decision in a
+	// string.
+	Argv []string
+
+	// Command is the same words joined, for the surfaces that SHOW the launch: the history entry and
+	// the note. It is not what runs — `ui.LoginPayload(Argv)` is — so it may be read but not sent.
+	Command string
 }
 
 // Models is the set of known model aliases.
@@ -163,8 +173,8 @@ func (s Spec) Build(id string) (Plan, error) {
 		return Plan{}, err
 	}
 
-	// Build the command as a single string for tmux's shell-command argument.
-	// Measured: a command with quoted arguments works as one string.
+	// The command as WORDS. Both forms come out of this one list, so the line the operator reads in
+	// their history cannot say something different from the argv the pane was given.
 	var parts []string
 	parts = append(parts, "claude")
 	parts = append(parts, "--session-id", id)
@@ -180,6 +190,7 @@ func (s Spec) Build(id string) (Plan, error) {
 
 	return Plan{
 		SessionID: id,
+		Argv:      parts,
 		Command:   strings.Join(parts, " "),
 	}, nil
 }

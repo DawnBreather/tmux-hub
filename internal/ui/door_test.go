@@ -121,14 +121,18 @@ func TestTheDoorNamesTheSessionAfterTheRowAndItsID(t *testing.T) {
 	}
 }
 
-// The payload is §20's own wrapper, so a `claude` that exits 1 with one stderr line leaves the
-// message on screen instead of evaporating with the pane.
+// The payload runs the verb under a LOGIN shell, so `claude` is on the path on a host that only puts
+// it there for a login command, and it holds the pane on failure, so a `claude` that exits 1 with one
+// stderr line leaves the message on screen instead of evaporating with the pane.
 //
 // And it carries NO `--debug-file`. Measured 2026-08-17 against the real CLI: `claude attach
 // --debug-file /tmp/x deadbeef` answers rc=1 `unknown option '--debug-file'` with
 // `Usage: claude attach <id>` — §22.3 left that flag UNVERIFIED and the payload rested on it.
 func TestTheDoorsPayloadWrapsTheVerbAndCarriesNoDebugFile(t *testing.T) {
-	got := wakePayload("30f3382b")
+	got, err := wakePayload("30f3382b")
+	if err != nil {
+		t.Fatalf("wakePayload refused a plain short id: %v", err)
+	}
 	if !strings.Contains(got, "claude") || !strings.Contains(got, "attach") ||
 		!strings.Contains(got, "30f3382b") {
 		t.Errorf("payload does not run the verb: %s", got)
@@ -137,8 +141,13 @@ func TestTheDoorsPayloadWrapsTheVerbAndCarriesNoDebugFile(t *testing.T) {
 		t.Errorf("the payload carries a flag `claude attach` REJECTS, so every wake would exit 1 "+
 			"before reaching the daemon: %s", got)
 	}
-	if !strings.Contains(got, "sh -c") && !strings.Contains(got, "sh") {
-		t.Errorf("the payload is not wrapped, so a one-line failure would vanish with the pane: %s", got)
+	// `-l`, not just `sh`. A pane inherits the ssh CLIENT's environment, so on dev-air (login shell
+	// nushell) the non-login PATH does not contain `claude` and the door created a session that died
+	// before the hub could read its window id. The old assertion was `Contains(got, "sh")`, which the
+	// broken shape satisfied — it is inside the word `attach`.
+	if !strings.Contains(got, "sh -lc") {
+		t.Errorf("the payload does not run under a login shell, so `claude` may not be on the "+
+			"pane's path at all: %s", got)
 	}
 	if !strings.Contains(got, "read") {
 		t.Errorf("nothing holds the pane open on failure: %s", got)

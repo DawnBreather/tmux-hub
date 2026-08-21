@@ -78,7 +78,7 @@ func TestAnUnsetEntryTimeDoesNotWinTheWaitingBlock(t *testing.T) {
 	}
 	SortByAttention(rows)
 	if rows[0].PaneID != "%1" {
-		t.Errorf("the row with no entry time dev the block; want %%1 first, got %s",
+		t.Errorf("the row with no entry time won the block; want %%1 first, got %s",
 			rows[0].PaneID)
 	}
 }

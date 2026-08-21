@@ -135,7 +135,7 @@ func base(t *testing.T, w, h int, panes ...registry.Pane) model {
 	}
 	// Production never hands View() an arbitrary slice: Registry.Update sorts by
 	// attention before anything renders. Assigning model.panes directly skipped
-	// that, so every screen here used to show rows in the order fleet() happens
+	// that, so every screen here used to show rows in the order mockupFleet() happens
 	// to list them — and attention ordering is the single property the dashboard
 	// exists for. A mockup that gets it wrong calibrates the reviewer wrong.
 	registry.SortByAttention(panes)

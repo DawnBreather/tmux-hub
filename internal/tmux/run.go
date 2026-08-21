@@ -369,6 +369,38 @@ func NewExec(timeout time.Duration) Exec {
 	return &execRunner{timeout: timeout}
 }
 
+// forceUTF8 is `-u`, and it is on EVERY tmux invocation this seam builds because a client with no
+// locale silently rewrites the bytes tmux emits while `#{n:X}` keeps reporting the STORED length —
+// which desynchronises the label framing and takes the whole host dark.
+//
+// tmux decides its output charset from the CLIENT's LC_CTYPE/LC_ALL/LANG. The hub's remote client is
+// `ssh <host> tmux …`, non-interactive, so on a host whose sshd passes no locale there is none, and
+// tmux downgrades: it substitutes ONE `_` byte per non-ASCII CHARACTER. Measured 2026-08-20 on
+// dev-air (tmux 3.7b, all three variables unset), carrying each value in a user option so the
+// question is about the client's output path and not about one field:
+//
+//	value       stored  #{n:}  emitted  plain            with -u
+//	abcdef           6      6        6  AGREE            AGREE
+//	abc—def          9      9        7  OVERRUN abc_def  AGREE, intact
+//	abcпутьdef      14     14       10  OVERRUN abc____def  AGREE, intact
+//
+// So `n:` is not wrong — it is the stored byte count, exactly as labels.go says — but the reader
+// consumes n: bytes from a stream that is SHORTER, walks into the next field, and `parseLabelRecords`
+// refuses the record with `value is not followed by a separator`. One non-ASCII character anywhere in
+// any framed field takes the entire host down, and the fields carry operator data: a session named
+// after a Cyrillic prompt or a path with a non-ASCII segment is enough. That is what dev-air reported
+// as `dev-air down (%0/pane_start_command: value is not followed by a separator …)`.
+//
+// `-u` is accepted on 3.2a as well as 3.7b, i.e. on the oldest version in this fleet, and with it all
+// nine cells above agree and every value round-trips intact. It goes on the LOCAL branch too: the
+// local client's locale is the operator's environment, which can be just as empty, and the same flag
+// also makes `send-keys -l` carry non-ASCII text into a pane unmangled.
+//
+// nuc never showed the defect because its sshd sets `LANG=C.UTF-8` even for a non-interactive command,
+// so that client was already UTF-8 — which is why a locale is not something to rely on being absent
+// OR present. The flag settles it in band, on every host, with no far-side configuration.
+const forceUTF8 = "-u"
+
 // build turns a tmux argv into the process argv, validating BEFORE wrapping.
 //
 // The order is the safety property. Validate reads the -t shape out of argv
@@ -401,7 +433,7 @@ func (r *execRunner) build(t Target, args []string) ([]string, error) {
 		}
 		// After -S, never before: the last -S wins, which is what lets an override
 		// override (see Target.TmuxArgs).
-		argv := append([]string{"tmux", "-S", t.Socket}, t.TmuxArgs...)
+		argv := append([]string{"tmux", forceUTF8, "-S", t.Socket}, t.TmuxArgs...)
 		return append(argv, args...), nil
 	}
 	if t.ControlPath == "" {
@@ -428,7 +460,8 @@ func (r *execRunner) build(t Target, args []string) ([]string, error) {
 	// The program name stays BARE and only its arguments are quoted — see ShellJoinCommand. A
 	// quoted `'tmux'` is legal POSIX and is a parse error in a shell that is not POSIX, which made
 	// a macOS host running Nushell report zero panes at rc=0.
-	remote := make([]string, 0, len(t.TmuxArgs)+len(args))
+	remote := make([]string, 0, 1+len(t.TmuxArgs)+len(args))
+	remote = append(remote, forceUTF8)
 	remote = append(remote, t.TmuxArgs...)
 	remote = append(remote, args...)
 	payload := ShellJoinCommand("tmux", remote)

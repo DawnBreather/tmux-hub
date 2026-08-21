@@ -9,9 +9,9 @@ import (
 	"testing"
 )
 
-// A generated frame is PUBLISHED the moment the generator writes it: `docs/ui-mockup.html` is
-// committed, and while this project was private it was also bind-mounted into a web server, so
-// there was no commit and no deploy step between writing a frame and serving it. The picker's fleet comment states the rule that
+// docs/ is mounted read-only into a Caddy container and served at a public URL
+// (`deploy/ui-draft/docker-compose.yml`), so a frame is PUBLISHED the moment the generator
+// writes it — no commit and no deploy step. The picker's fleet comment states the rule that
 // follows ("the aliases are FICTIONAL, and that is a hard rule for this file") and enforces it
 // by having been careful. This enforces it.
 //
@@ -57,15 +57,14 @@ func TestThePublishedMockupNamesNoPrivateHost(t *testing.T) {
 			aliases = append(aliases, a)
 		}
 	}
-	// NOTHING TO LEAK IS NOT THE SAME AS A GUARD THAT DID NOT LOOK, and which of the two you are
-	// in is decided by the count — so the count is always printed, and zero is the only case that
-	// skips. An earlier version demanded five concrete aliases and FAILED below that, which was
-	// calibrated to the author's own 17-alias machine: on a contributor's laptop with a two-host
-	// config that is a red suite for a reason that has nothing to do with their change, and the
-	// aliases it refused to check are exactly the ones it would have been checking. One to four
-	// aliases is not a vacuous run — it checks every alias that exists.
-	if len(aliases) == 0 {
-		t.Skip("no concrete Host aliases in this machine's ssh config, so it has none to leak")
+	// The FLOOR comes before any skip. It used to sit after a `len(aliases) == 0` skip, which
+	// gave the softest treatment to the strictly WORST case: zero checked was a skip — and
+	// CLAUDE.md records that `t.Skip` reports PASS — while four checked was a hard failure.
+	// A config whose every Host line is a pattern would have passed having checked nothing,
+	// which is the exact shape the comment below names.
+	if len(aliases) < 5 {
+		t.Fatalf("only %d concrete aliases survived filtering, so this guard checked almost "+
+			"nothing — a config of patterns must not read as a clean document", len(aliases))
 	}
 
 	for _, a := range aliases {

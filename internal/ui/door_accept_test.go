@@ -122,12 +122,16 @@ func TestAOnABackgroundRowRunsTheVerbInASessionItMakes(t *testing.T) {
 			t.Errorf("the create does not carry %q:\n  %s", want, joined)
 		}
 	}
-	// The payload is ONE argv element and the assertion is an equality, not a substring: tmux hands
-	// a trailing argument to `$SHELL -c`, so the verb arrives QUOTED — `''\''claude''\'' ''\''attach''\''` —
-	// and a substring check for `claude attach` would fail on a payload that is perfectly correct.
-	if got := create[len(create)-1]; got != wakePayload("30f3382b") {
-		t.Errorf("the payload is not the wrapped verb:\n  got  %s\n  want %s", got,
-			wakePayload("30f3382b"))
+	// The payload is ONE argv element, and the assertion is an equality against the builder rather
+	// than a substring: what has to hold is that the door sends the WHOLE wrapper — a login shell and
+	// the hold on failure — and a `Contains(joined, "claude attach")` passes on the bare verb, which
+	// is the shape that could not find `claude` on a remote host at all.
+	wantPayload, err := wakePayload("30f3382b")
+	if err != nil {
+		t.Fatalf("wakePayload refused a plain short id: %v", err)
+	}
+	if got := create[len(create)-1]; got != wantPayload {
+		t.Errorf("the payload is not the wrapped verb:\n  got  %s\n  want %s", got, wantPayload)
 	}
 	if strings.Contains(joined, "--debug-file") {
 		t.Errorf("the payload carries a flag `claude attach` rejects:\n  %s", joined)

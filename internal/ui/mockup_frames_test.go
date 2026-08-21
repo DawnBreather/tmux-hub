@@ -24,6 +24,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/DawnBreather/tmux-hub/internal/fleet"
 	"github.com/DawnBreather/tmux-hub/internal/hostset"
 	"github.com/DawnBreather/tmux-hub/internal/hub"
 	"github.com/DawnBreather/tmux-hub/internal/project"
@@ -62,7 +63,7 @@ type scene struct {
 //
 // **The aliases are FICTIONAL, and that is a hard rule for this file rather than a
 // preference.** `docs/` is mounted read-only into a running Caddy container
-// (committed here, and formerly also bind-mounted into a web server), so a frame is
+// (`deploy/ui-draft/docker-compose.yml`) and served at a public URL, so a frame is
 // published the moment it is written — no commit and no deploy step. Only `nuc` is kept,
 // because the document already contained it; every other name here is invented, and
 // `github.com` stays only because it is a public service rather than somebody's host.
@@ -164,6 +165,46 @@ func pickerModel(t *testing.T, w, h int, rows []PickerRow, hosts []hub.Host, pan
 	m.mode = modePicker
 	m.picker = rows
 	return m.clampPickerCursor()
+}
+
+// pickerWithBehind is pickerModel plus the section of machines the hops declare, installed through
+// the product's own `WithDiscovered` so the frame is evidence about the option an operator's run uses
+// and not about a field this file set.
+//
+// It exists because the published document had no frame of this feature at all — 25 commits of it —
+// and this repository has a written lesson about exactly that: a byte-reproducible mockup blind to a
+// class cannot show a regression in it, so the next refactor moves the frame and the diff is empty.
+func pickerWithBehind(t *testing.T, w, h int, rows []PickerRow, hosts []hub.Host, behind []DiscoveredRow, panes ...registry.Pane) model {
+	t.Helper()
+	m := pickerModel(t, w, h, rows, hosts, panes...)
+	WithDiscovered(behind)(&m)
+	return m
+}
+
+// behindTheHops is the fixture for that frame, and every field of it is the shape the real crawl
+// produces rather than an invention. The two states are the only two the shipped crawl can reach
+// (docs/design.md §9's own "shipped today" column): a machine whose recipe names no key this side
+// holds, and a machine standing behind a proxy that cannot be identified at all. The remedy strings
+// are `fleet.Diagnose`'s own words for those two cases, which is what makes the frame worth reading —
+// the section's entire product is the act, so a frame that carried invented prose would prove nothing.
+//
+// Names are invented on purpose: docs/ is served publicly by a live Caddy at the moment of writing, so
+// no real host of this machine may appear here. Reasons are real, because they are the program's.
+func behindTheHops() []DiscoveredRow {
+	return []DiscoveredRow{
+		{
+			Label: "lab-gpu", Observer: "staging-2", State: fleet.Blocked,
+			Reason: "run `ssh-copy-id build@lab-gpu.internal`, or copy one of ~/.ssh/id_rsa, " +
+				"~/.ssh/id_ecdsa, ~/.ssh/id_ecdsa_sk, ~/.ssh/id_ed25519, ~/.ssh/id_ed25519_sk to " +
+				"this machine — the recipe names no key that is here",
+		},
+		{
+			Label: "vault-01", Observer: "staging-2", State: fleet.Blocked,
+			Reason: "give this machine a direct route — bastion-a stands between it and " +
+				"vault-01.internal, and a proxied handshake reports the proxy's host key rather " +
+				"than vault-01.internal's, so the hub cannot tell which machine answered",
+		},
+	}
 }
 
 // pressJUntil walks the cursor down with the real key handler until it rests on
@@ -297,6 +338,63 @@ func pickerScene(t *testing.T) scene {
 				// remedy gone from the most important row on the screen. It cannot be a
 				// substring of this frame unless the wrap stopped happening.
 				deny: []string{"absent; ena", "[ ] github.com"},
+			},
+			{
+				title: "4. Что стоит ЗА взятыми хостами — 100×32",
+				did: "хаб спросил каждый взятый хост, что объявляет ЕГО ~/.ssh/config, и " +
+					"разрешил транспорт каждой найденной машины на том же хосте",
+				look: "несёт ли каждая строка ДЕЙСТВИЕ, а не диагноз: у первой машины это " +
+					"конкретный ssh-copy-id, у второй — что между нами стоит прокси, и потому " +
+					"её вообще нельзя опознать (отпечаток пришёл бы от прокси, а не от неё). " +
+					"Список кандидатов при этом остаётся хозяином экрана: галочки на месте, " +
+					"курсор виден, а секция взяла ровно столько, сколько осталось.",
+				w: 100, h: 32,
+				screen: pickerWithBehind(t, 100, 32, mixed, hosts2(), behindTheHops(), pickerBackdrop()...).View(),
+				want: []string{
+					// The heading names the TOTAL, which is what lets the section leave a machine
+					// out honestly: the overlay is smaller than the terminal (pickerSplit decides
+					// it), so at this size the section's share is five rows and it spends them on
+					// ONE machine and the whole of its remedy rather than on two half-remedies.
+					"Behind your hops — 2 machines your hosts declare",
+					// The row says WHOSE config the machine came out of, because a name from a
+					// hop's vocabulary is not addressable from here.
+					"blocked   lab-gpu @staging-2",
+					// And the ACT, whole — the half fleet.Diagnose puts first precisely so one
+					// line can carry it, down to the last key it would offer.
+					"run `ssh-copy-id build@lab-gpu.internal`",
+					"no key that is here",
+					// The candidate list is still the screen's subject, cursor and ticks intact.
+					"› [x] nuc           tmux 3.2a",
+					"space: keep this host · enter: save and connect · esc: cancel · r: probe again",
+				},
+				// It must not claim what it did not name: a marker naming a count over a section
+				// that named nobody. The remedy being WHOLE is asserted positively above, by its
+				// last clause — a deny on the wrap itself would forbid the wrapping, which is the
+				// feature (an earlier draft of this needle did exactly that and the generator
+				// refused to publish, which is the guard doing its job).
+				deny: []string{"2 machines not shown", "[x] github.com"},
+			},
+			{
+				title: "5. Тот же экран на 120×44 — обе машины целиком",
+				did:   "то же состояние, терминал выше: секции хватает места на вторую машину",
+				look: "растёт ли ответ вместе с терминалом — вторая машина появляется целиком, " +
+					"и вместе с ней исчезает нужда в строке «сколько не показано»: заголовок " +
+					"по-прежнему называет общее число, так что читателю не нужно её искать.",
+				w: 120, h: 44,
+				screen: pickerWithBehind(t, 120, 44, mixed, hosts2(), behindTheHops(), pickerBackdrop()...).View(),
+				want: []string{
+					"Behind your hops — 2 machines your hosts declare",
+					"blocked   lab-gpu @staging-2",
+					"blocked   vault-01 @staging-2",
+					"run `ssh-copy-id build@lab-gpu.internal`",
+					// The proxy diagnosis, which is the other of the two states the shipped crawl
+					// can reach — and the only one whose remedy is not a command, because there
+					// is no command: the operator has to give the machine a route.
+					"give this machine a direct route — bastion-a stands between it and",
+					"› [x] nuc           tmux 3.2a",
+				},
+				// Both machines are drawn, so no row may say any is hidden.
+				deny: []string{"machines not shown", "machine not shown", "[x] github.com"},
 			},
 			{
 				title: "4. Ни один хост не подходит",

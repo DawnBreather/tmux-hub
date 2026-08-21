@@ -275,3 +275,67 @@ func TestSessionNameWithIDIsTheDoorsShape(t *testing.T) {
 		}
 	}
 }
+
+// disagreement reports how a Plan's two views of one command differ, or "" when they cannot.
+//
+// A function rather than four inline comparisons, because the pole below needs the same question asked
+// of a Plan that Build did NOT make — a check whose only input is Build's output cannot distinguish
+// "the views agree" from "there is one producer today".
+func disagreement(p Plan) string {
+	if joined := strings.Join(p.Argv, " "); p.Command != joined {
+		return "Command is " + p.Command + ", the argv joined is " + joined
+	}
+	// The round trip is the half that is not arithmetic: a Command that splits back into a different
+	// number of words is a line the operator reads as N arguments and the pane runs as M. It is also
+	// where an element carrying whitespace shows up, which `Build` does not refuse for the one field it
+	// does not constrain — the session id — and `ui.LoginPayload` does, naming the argument.
+	fields := strings.Fields(p.Command)
+	if len(fields) != len(p.Argv) {
+		return "Command splits into " + strings.Join(fields, "|") +
+			" but the argv is " + strings.Join(p.Argv, "|")
+	}
+	for i := range fields {
+		if fields[i] != p.Argv[i] {
+			return "word " + fields[i] + " is argv element " + p.Argv[i]
+		}
+	}
+	return ""
+}
+
+// `Argv` is what a pane RUNS and `Command` is what the history log and the note SHOW, so a plan whose
+// two views disagree is a hub that records something other than what it did. They come out of one list
+// today; this pins that they must, over every flag combination the form can produce, because the form
+// is where a fourth field would be added and the second producer is what would be forgotten.
+func TestThePlansTwoViewsOfTheCommandCannotDisagree(t *testing.T) {
+	for _, s := range []Spec{
+		{CWD: "/srv/api"},
+		{CWD: "/srv/api", Model: "opus"},
+		{CWD: "/srv/api", PermissionMode: "bypassPermissions"},
+		{CWD: "/srv/api", Model: "sonnet", PermissionMode: "plan"},
+		{CWD: "/srv/api", Model: "claude-opus-5", PermissionMode: "default"},
+		{CWD: "/srv/api", NewSession: true, SessionName: "api", Model: "fable"},
+	} {
+		p, err := s.Build("7007b23f-1599-4efa-81c5-4195621cc273")
+		if err != nil {
+			t.Fatalf("Build(%+v): %v", s, err)
+		}
+		if why := disagreement(p); why != "" {
+			t.Errorf("the plan for %+v shows one command and runs another: %s", s, why)
+		}
+	}
+	// The pole. Without it the check above passes against any Plan at all, since a single producer
+	// makes agreement a property of the code rather than an assertion about it.
+	hand := Plan{
+		SessionID: "abc",
+		Argv:      []string{"claude", "--session-id", "abc", "--model", "opus"},
+		Command:   "claude --session-id abc",
+	}
+	if why := disagreement(hand); why == "" {
+		t.Error("this test cannot fail: a Command missing two of its argv's words was called agreement")
+	}
+	// And the shape the round trip exists for: one element, two words on screen.
+	split := Plan{Argv: []string{"claude", "--model", "my model"}, Command: "claude --model my model"}
+	if why := disagreement(split); why == "" {
+		t.Error("an argument holding a space read as one word, so the join is not a reversible view")
+	}
+}

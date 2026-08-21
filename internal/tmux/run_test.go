@@ -555,7 +555,7 @@ func TestARemoteTargetBuildsOneSSHInvocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertArgv(t, got, "ssh", "-o", "BatchMode=yes", "-o", "ProxyCommand=false",
-		"-S", "/run/cm-nuc", "nuc", `tmux 'list-panes' '-a' '-F' '#{pane_id}'`)
+		"-S", "/run/cm-nuc", "nuc", `tmux '-u' 'list-panes' '-a' '-F' '#{pane_id}'`)
 	// Said again as two properties rather than as one literal, because these are the two halves
 	// that a wrong wrapping breaks separately, and they pull in OPPOSITE directions:
 	//
@@ -587,7 +587,7 @@ func TestALocalTargetIsStillBareTmux(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertArgv(t, got, "tmux", "-S", "/tmp/tmux-1000/default", "list-panes", "-a")
+	assertArgv(t, got, "tmux", "-u", "-S", "/tmp/tmux-1000/default", "list-panes", "-a")
 }
 
 // A remote target with no control path is a hub defect, not a runtime condition:
@@ -624,7 +624,7 @@ func TestARemoteRunInputCarriesThePayloadOnStdin(t *testing.T) {
 		t.Fatalf("the shim printed nothing recognisable: %q", res.Stdout)
 	}
 	const wantArgv = `[-o] [BatchMode=yes] [-o] [ProxyCommand=false] [-S] [/run/cm-nuc] [nuc] ` +
-		`[tmux 'load-buffer' '-b' 'probe' '-'] `
+		`[tmux '-u' 'load-buffer' '-b' 'probe' '-'] `
 	if argvLine != wantArgv {
 		t.Errorf("ssh received a different argv:\n got %q\nwant %q", argvLine, wantArgv)
 	}
@@ -655,7 +655,7 @@ func TestARemoteRunSpawnsSSHAndNotLocalTmux(t *testing.T) {
 		t.Fatalf("Run: %v (stderr=%q)", err, res.Stderr)
 	}
 	const wantArgv = `[-o] [BatchMode=yes] [-o] [ProxyCommand=false] [-S] [/run/cm-nuc] [nuc] ` +
-		`[tmux 'list-panes' '-a' '-F' '#{pane_id}'] ` + "\n"
+		`[tmux '-u' 'list-panes' '-a' '-F' '#{pane_id}'] ` + "\n"
 	if res.Stdout != wantArgv {
 		t.Errorf("the poll path spawned a different process:\n got %q\nwant %q", res.Stdout, wantArgv)
 	}
