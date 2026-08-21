@@ -557,7 +557,7 @@ func sshConfigPaths() (userPath, systemPath string) {
 
 // probeArgs is the ssh argv for one probe, and the two options are not tuning.
 //
-// Measured on the host that set the wall time, `ssh reports-engine 'tmux -V; id -u'`
+// Measured on the host that set the wall time, `ssh metrics-engine 'tmux -V; id -u'`
 // takes 133.3 s bare against 6.1 s with them: BatchMode refuses to sit forever on a
 // password prompt nobody can see, and ConnectTimeout caps a host that is powered off
 // at 6 s instead of the system default's ~2 minutes. hostset.ProbeAll is concurrent,

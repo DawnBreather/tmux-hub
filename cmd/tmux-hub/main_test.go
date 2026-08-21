@@ -240,7 +240,7 @@ func TestTheFileMayNotTakeTheLabelOfThisMachinesOwnServer(t *testing.T) {
 }
 
 // The two options that decide whether a first run takes 7 seconds or 134. Measured on
-// the host that set the wall time: `ssh reports-engine 'tmux -V; id -u'` takes 133.3 s
+// the host that set the wall time: `ssh metrics-engine 'tmux -V; id -u'` takes 133.3 s
 // bare against 6.1 s with them, and ProbeAll is concurrent, so the wall IS the slowest
 // probe. hostset.Runner's own doc comment states the requirement; this is what holds
 // the production implementation to it.

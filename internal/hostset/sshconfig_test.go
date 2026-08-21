@@ -11,7 +11,7 @@ func TestParseSSHConfigDropsWhatIsNotAMachine(t *testing.T) {
 	user := filepath.Join(dir, "config")
 	os.WriteFile(user, []byte(`
 Host nuc
-    HostName nuc-clouddesk.DawnBreather.net
+    HostName nuc-sandbox-a.DawnBreather.net
 Host github.com dev.github.com orbits.github.com
     User git
 Host web-app web-db

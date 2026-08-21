@@ -66,7 +66,7 @@ type scene struct {
 // published the moment it is written — no commit and no deploy step. Only `nuc` is kept,
 // because the document already contained it; every other name here is invented, and
 // `github.com` stays only because it is a public service rather than somebody's host.
-// Checked before writing: `eu`, `web-app`, `web-db`, `side-desk` and `hermes-ws` — all
+// Checked before writing: `eu`, `web-app`, `web-db`, `side-desk` and `studio-ws` — all
 // real hosts of this machine, all named in the approved target frame — appeared ZERO
 // times in the published file, so using them would have added five private aliases to a
 // public page.

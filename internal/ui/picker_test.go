@@ -70,7 +70,7 @@ func targetFrameRows() []PickerRow {
 		{Alias: "eu", Version: "3.2a", Usable: true},
 		{Alias: "side-desk", Version: "3.4", Usable: true, Enabled: true},
 		{Alias: "github.com", Reason: "not a shell host — this is a git remote, so leave it off"},
-		{Alias: "hermes-ws", Reason: "no tmux — install it there, or leave this host off"},
+		{Alias: "studio-ws", Reason: "no tmux — install it there, or leave this host off"},
 		{Alias: "web-db", Version: "3.2a", Usable: true, Enabled: true},
 	}
 	for len(rows) < 20 {
@@ -90,13 +90,13 @@ func TestThePickerShowsEveryReasonOnTheScreenViewReturns(t *testing.T) {
 		{Alias: "nuc", Version: "3.2a", Usable: true, Enabled: true},
 		{Alias: "side-desk", Version: "3.4", Usable: true},
 		{Alias: "github.com", Reason: "not a shell host — this is a git remote, so leave it off"},
-		{Alias: "hermes-ws", Reason: "no tmux — install it there, or leave this host off"},
+		{Alias: "studio-ws", Reason: "no tmux — install it there, or leave this host off"},
 	}
 	m := base(t, 120, 24)
 	m.mode = modePicker
 	m.picker = rows
 	view := m.View()
-	for _, want := range []string{"nuc", "3.2a", "github.com", "git remote", "hermes-ws", "no tmux"} {
+	for _, want := range []string{"nuc", "3.2a", "github.com", "git remote", "studio-ws", "no tmux"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("View() does not show %q:\n%s", want, view)
 		}
@@ -696,7 +696,7 @@ func TestAFailedSaveStopsNothingAndSaysSo(t *testing.T) {
 }
 
 // A host the user KEPT can always be turned off, whatever the probe now answers.
-// Measured before `Kept` existed: `hermes-ws` enabled in hosts.toml with the probe
+// Measured before `Kept` existed: `studio-ws` enabled in hosts.toml with the probe
 // answering `no tmux` had no box at all, so no key could turn it off — and `space`
 // answered "cannot be enabled", which is the opposite of what the user was doing. The
 // only remedy left was hand-editing the file, on the screen §9 calls the place a
@@ -706,16 +706,16 @@ func TestAHostTheUserKeptIsAlwaysUntickableWhateverTheProbeSaysNow(t *testing.T)
 	m := base(t, 120, 24)
 	m.mode = modePicker
 	m.picker = []PickerRow{
-		{Alias: "hermes-ws", Reason: "no tmux — install it there, or leave this host off",
+		{Alias: "studio-ws", Reason: "no tmux — install it there, or leave this host off",
 			Enabled: true, Kept: true},
 		// The discriminator: same answer, never the user's. This one still has no box,
 		// so "an enabled host keeps its box" cannot be satisfied by giving every row one.
 		{Alias: "github.com", Reason: "not a shell host — this is a git remote, so leave it off"},
 	}
-	m = m.withKept([]hostset.Entry{{Alias: "hermes-ws", Enabled: true}})
+	m = m.withKept([]hostset.Entry{{Alias: "studio-ws", Enabled: true}})
 	m.pickerPorts = PickerPorts{Save: func(e []hostset.Entry) error { saved = e; return nil }}
 
-	hermes := lineContaining(t, m.View(), "hermes-ws")
+	hermes := lineContaining(t, m.View(), "studio-ws")
 	if !strings.Contains(hermes, "[!]") {
 		t.Errorf("a kept host whose probe now disagrees shows no box, so nothing can turn it off: %q", hermes)
 	}
@@ -735,7 +735,7 @@ func TestAHostTheUserKeptIsAlwaysUntickableWhateverTheProbeSaysNow(t *testing.T)
 	// it back on is not, because only a live probe answer grants that. Off, the row reads
 	// like github.com — off and not enable-able, which is what it now is — and `space`
 	// says so in a sentence that is finally true. Undo is esc, which is on screen.
-	if h := lineContaining(t, m.View(), "hermes-ws"); strings.Contains(h, "[") {
+	if h := lineContaining(t, m.View(), "studio-ws"); strings.Contains(h, "[") {
 		t.Errorf("a host that is off and cannot be enabled still offers a box: %q", h)
 	}
 	m, _ = press(t, m, runes(" "))
@@ -749,7 +749,7 @@ func TestAHostTheUserKeptIsAlwaysUntickableWhateverTheProbeSaysNow(t *testing.T)
 	// deliberately wider than either key predicate, or turning a host off would be a
 	// gesture hosts.toml never hears.
 	m, _ = press(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	if len(saved) != 1 || saved[0].Alias != "hermes-ws" || saved[0].Enabled {
+	if len(saved) != 1 || saved[0].Alias != "studio-ws" || saved[0].Enabled {
 		t.Errorf("the decision never reached hosts.toml: %+v", saved)
 	}
 }
@@ -836,7 +836,7 @@ func TestTheCursorOpensOnARowAKeyCanActOn(t *testing.T) {
 	m := base(t, 120, 24)
 	m.picker = []PickerRow{
 		{Alias: "orbits.github.com", Reason: "not a shell host — this is a git remote, so leave it off"},
-		{Alias: "hermes-ws", Reason: "no tmux — install it there, or leave this host off"},
+		{Alias: "studio-ws", Reason: "no tmux — install it there, or leave this host off"},
 		{Alias: "web-db", Version: "3.2a", Usable: true},
 	}
 	got, _ := press(t, m, runes("p"))
@@ -847,7 +847,7 @@ func TestTheCursorOpensOnARowAKeyCanActOn(t *testing.T) {
 	// The discriminator: not merely "somewhere", but off the excluded rows — otherwise a
 	// product that never moved the cursor would satisfy the assertion above whenever the
 	// first row happened to be usable.
-	for _, excluded := range []string{"orbits.github.com", "hermes-ws"} {
+	for _, excluded := range []string{"orbits.github.com", "studio-ws"} {
 		if row := lineContaining(t, view, excluded); strings.HasPrefix(row, "›") {
 			t.Errorf("the cursor opened on a row that refuses every key: %q", row)
 		}
@@ -869,7 +869,7 @@ func TestTheCursorStaysAtTheTopWhenEveryCandidateIsExcluded(t *testing.T) {
 	m := base(t, 120, 24)
 	m.picker = []PickerRow{
 		{Alias: "orbits.github.com", Reason: "not a shell host — this is a git remote, so leave it off"},
-		{Alias: "hermes-ws", Reason: "no tmux — install it there, or leave this host off"},
+		{Alias: "studio-ws", Reason: "no tmux — install it there, or leave this host off"},
 	}
 	got, _ := press(t, m, runes("p"))
 	if got.pickerCursor != 0 {
@@ -1450,7 +1450,7 @@ func TestThePickerBodyMatchesTheApprovedTargetFrame(t *testing.T) {
 		"› [ ] eu            tmux 3.2a",
 		"  [x] side-desk     tmux 3.4",
 		"      github.com    not a shell host — this is a git remote, so leave it off",
-		"      hermes-ws     no tmux — install it there, or leave this host off",
+		"      studio-ws     no tmux — install it there, or leave this host off",
 		"  ↓ 14 more · j/k to move",
 		"",
 		"space: keep this host · enter: save and connect · esc: cancel · r: probe again",

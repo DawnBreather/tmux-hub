@@ -85,7 +85,7 @@ func (r PickerRow) canEnable() bool { return r.Usable || r.TimedOut }
 // canDisable reports whether this host can be switched OFF here. Any row that is on
 // can, whatever the probe now answers.
 //
-// This is the half that was broken (review I4), measured: `hermes-ws` enabled in
+// This is the half that was broken (review I4), measured: `studio-ws` enabled in
 // hosts.toml with the probe answering `no tmux` had no box at all, so no key could turn
 // it off, and `space` replied "cannot be enabled" — the opposite of what the user was
 // doing. The only remedy left was hand-editing the file, on the screen §9 calls the

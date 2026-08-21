@@ -131,7 +131,7 @@ rejection to come back.
 | with `XDG_RUNTIME_DIR` unset, `filepath.Join("", "tmux-hub")` is `tmux-hub` — **not absolute** | the startup assertion is required, not defensive |
 | non-Claude prompts: `[y/N]` and `(y/n)` read `needs`; a bare `Rebase onto main? Proceed?` did **not** until a positional rule was added; a REPL at `>>>` reads `idle`, which is the right meaning ("ready for the next thing"); a `Password:` prompt is not detected | `needs` also fires when the zone's LAST non-blank line ends in `?` — position is what keeps that precise, since a question at the cursor is being asked while the same words earlier are just output |
 | **a git host does not fail — it hangs.** Measured spawn observables: DNS miss `rc=255` in 3.4 s (`Could not resolve hostname`), auth refusal `rc=255` in 0.14 s (`Permission denied (publickey,password)`), and `github.com` **neither**: it accepted the connection, authenticated with the user's key, and `ssh -N -M -L …` sat there past 40 s with a live tunnel to nowhere, because `ExitOnForwardFailure` only covers the LOCAL bind | the concrete case behind "process liveness is never health": a spawn that succeeds proves nothing at all |
-| the membership probe keyed on **stdout** was verified on three real hosts: `nuc` rc=0 with `tmux 3.2a`, `hermes-ws` **rc=0 with no version** (`command not found: tmux`), `github.com` rc=1 | an rc-keyed probe admits `hermes-ws`, which has no tmux; `^tmux \S+` in stdout excludes it |
+| the membership probe keyed on **stdout** was verified on three real hosts: `nuc` rc=0 with `tmux 3.2a`, `studio-ws` **rc=0 with no version** (`command not found: tmux`), `github.com` rc=1 | an rc-keyed probe admits `studio-ws`, which has no tmux; `^tmux \S+` in stdout excludes it |
 | the wildcard and unroutable `Host` patterns (`.host`, `machine/.host`, `unix/*`, `vsock%*`) are **not** in `~/.ssh/config` — they live in a systemd drop-in reached through the SYSTEM config's `Include /etc/ssh/ssh_config.d/*.conf`. This machine's own config is 15 `Host` lines → **20 names** after expanding one multi-name line, with no wildcards, no `Match` blocks and no `Include` | a parser reading only the user's config never sees the junk; one reading the system chain must filter it. Either way the positive `tmux -V` probe eliminates it |
 | one host is reached through `ProxyCommand docker exec -i … nc %h %p` | a non-trivial transport the hub inherits for free by using ssh, and a reason not to reimplement reachability |
 | the 10-field delta format, **including `#{cursor_y}` and `#{session_id}`**, works verbatim on 3.2a | the zone anchor is not a 3.7b-only feature |
@@ -319,7 +319,7 @@ defeat mechanisms §11 claimed were structurally impossible.
 
 ### Hosts
 
-- `~/.ssh/config` `Host` lines may carry **several names** (`Host hermes-ws web-ws crater-ws …`
+- `~/.ssh/config` `Host` lines may carry **several names** (`Host studio-ws web-ws crater-ws …`
   is six hosts) — measured, 15 lines expand to 20 names on this machine. Wildcard and unroutable
   patterns (`.host`, `machine/.host`, `unix/*`, `vsock%*`) are **not** in the user's config at all:
   they come from a systemd drop-in reached through the *system* config's
@@ -1202,14 +1202,14 @@ host with no running server so a fresh box is still admitted.
 
 **Membership keys on the probe's output, not its exit code.** Measured, and it caught a defect in
 this design's own first probe: `ssh host 'tmux -V; echo …; id -u'` returned **rc=0 for
-`hermes-ws`, which has no tmux at all** — the shell's status belongs to the last command, and
+`studio-ws`, which has no tmux at all** — the shell's status belongs to the last command, and
 `tmux -V`'s own 127 (`command not found`) was swallowed. An rc-keyed probe therefore admits hosts
 that will fail mysteriously later. The test is that stdout matches `^tmux \S+`, and the parsed
 version is what the capability check in §5 then verifies. (Same family as a `| head` swallowing
 `$?`, which bit the same measurement one command later.)
 
 Version spread is real rather than hypothetical — measured across this machine's own hosts: local
-**3.7b**, `side-desk` **3.4**, `nuc` and `eu` **3.2a**, `hermes-ws` none.
+**3.7b**, `side-desk` **3.4**, `nuc` and `eu` **3.2a**, `studio-ws` none.
 
 **A timeout is a THIRD state, not an exclusion, and it is 40% of this fleet.** Measured across three
 consecutive probes each, with `ConnectTimeout=6`:

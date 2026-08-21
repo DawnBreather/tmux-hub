@@ -23,11 +23,11 @@ func TestProbeKeysOnStdoutNotOnTheExitCode(t *testing.T) {
 		reasonHas      string
 	}{
 		{"a real host", "tmux 3.2a\n1000\n", "", 0, true, ""},
-		// Measured on hermes-ws, web-ws, crater-ws, gs-ws and ik-ws: the shell's
+		// Measured on studio-ws, web-ws, crater-ws, st-ws and qa-ws: the shell's
 		// status belongs to `id -u`, so tmux's own 127 is swallowed and rc is 0.
 		{"rc=0 with no tmux", "1000\n", "zsh:1: command not found: tmux\n", 0, false, "no tmux"},
 		{"a git remote", "", "Invalid command: tmux -V\n", 1, false, "not a shell host"},
-		{"dns", "", "ssh: Could not resolve hostname clouddesk.ops.eu\n", 255, false, "does not resolve"},
+		{"dns", "", "ssh: Could not resolve hostname sandbox-a.ops.eu\n", 255, false, "does not resolve"},
 		{"unreachable", "", "ssh: connect to host 20.127.207.74 port 22: Connection timed out\n", 255, false, "cannot be reached"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
