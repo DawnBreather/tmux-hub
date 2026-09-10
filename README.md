@@ -18,6 +18,16 @@ that stopped being the agent you selected is refused rather than written to
 
 ## Install
 
+    brew tap dawnbreather/tap
+    brew install --cask tmux-hub
+
+That is the current release: a prebuilt binary, so no Go toolchain and no clone are
+needed. `tmux-hub --version` prints the version and the commit it was built from.
+
+**The source in this repository is a snapshot, and it is older than the releases.** The
+released binaries are built from a private tree — the release notes say so too — so
+building from here gives you the snapshot rather than the current program:
+
     go build -o tmux-hub ./cmd/tmux-hub
 
 ## Use
